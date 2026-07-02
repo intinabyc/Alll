@@ -1,0 +1,40 @@
+{
+  "name": "Diego · Plan Nutricional",
+  "short_name": "Diego 🌿",
+  "description": "Plan nutricional personalizado de Diego Carles — 2100 kcal diarias",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1B4332",
+  "theme_color": "#2D6A4F",
+  "lang": "es",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["health", "food"],
+  "shortcuts": [
+    {
+      "name": "Menú de hoy",
+      "short_name": "Menú",
+      "description": "Ver el menú del día de Diego",
+      "url": "./index.html#menu"
+    },
+    {
+      "name": "Lista de compras",
+      "short_name": "Compras",
+      "description": "Ver la lista de compras de hoy",
+      "url": "./index.html#compras"
+    }
+  ]
+}
