@@ -3206,6 +3206,7 @@ function firebaseConfigCompleta() {
 }
 
 let _firebaseErrorMotivo = null; // guarda por qué falló, para dar un mensaje honesto
+let _firebaseErrorDetalle = null; // texto técnico crudo del error, para diagnóstico
 
 async function initFirebaseSync() {
   if (!firebaseConfigCompleta()) {
@@ -3219,6 +3220,7 @@ async function initFirebaseSync() {
     _syncDb = firebase.firestore();
     _firebaseListo = true;
     _firebaseErrorMotivo = null;
+    _firebaseErrorDetalle = null;
 
     const codigo = localStorage.getItem('sync_codigo_familia');
     if (codigo) {
@@ -3228,6 +3230,7 @@ async function initFirebaseSync() {
     }
   } catch (err) {
     console.warn('[Sync] Error inicializando Firebase', err);
+    _firebaseErrorDetalle = `${err?.code || ''} ${err?.message || err}`.trim();
     // Distinguimos la causa para poder dar un mensaje honesto más adelante,
     // en vez de siempre culpar a FIREBASE_CONFIG aunque ya esté bien puesto.
     const msg = String(err?.code || err?.message || err);
@@ -3289,7 +3292,8 @@ async function confirmarCodigoSync() {
       'sin-internet': 'Parece que no hay conexión a internet en este momento.',
       'desconocido': 'No se pudo conectar a Firebase. Revisa tu internet e inténtalo de nuevo en unos segundos.'
     };
-    errEl.textContent = mensajes[_firebaseErrorMotivo] || mensajes['desconocido'];
+    errEl.textContent = (mensajes[_firebaseErrorMotivo] || mensajes['desconocido'])
+      + (_firebaseErrorDetalle ? ` [${_firebaseErrorDetalle}]` : '');
     errEl.style.display = 'block';
     return;
   }
