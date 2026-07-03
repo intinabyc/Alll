@@ -3230,7 +3230,11 @@ async function initFirebaseSync() {
     }
   } catch (err) {
     console.warn('[Sync] Error inicializando Firebase', err);
-    _firebaseErrorDetalle = `${err?.code || ''} ${err?.message || err}`.trim();
+    let detalleRaw = '';
+    try {
+      detalleRaw = JSON.stringify(err, Object.getOwnPropertyNames(err));
+    } catch (e) { /* algunos errores no son serializables, seguimos con el fallback */ }
+    _firebaseErrorDetalle = `${err?.code || ''} ${err?.message || ''} ${detalleRaw !== '{}' ? detalleRaw : ''}`.trim() || String(err) || 'error sin detalle (revisa que firebase-app-compat.js haya cargado)';
     // Distinguimos la causa para poder dar un mensaje honesto más adelante,
     // en vez de siempre culpar a FIREBASE_CONFIG aunque ya esté bien puesto.
     const msg = String(err?.code || err?.message || err);
@@ -3294,6 +3298,7 @@ async function confirmarCodigoSync() {
     };
     errEl.textContent = (mensajes[_firebaseErrorMotivo] || mensajes['desconocido'])
       + (_firebaseErrorDetalle ? ` [${_firebaseErrorDetalle}]` : '');
+    alert('DETALLE TÉCNICO DEL ERROR (manda captura de esto):\n\n' + (_firebaseErrorDetalle || 'sin detalle disponible'));
     errEl.style.display = 'block';
     return;
   }
