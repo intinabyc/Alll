@@ -1309,6 +1309,14 @@
   </div>
 </div>
 
+<!-- Firebase (respaldo en la nube) — SDK "compat" para poder usarlo con una etiqueta
+     script normal, sin necesidad de bundler ni type="module". Va ANTES del script
+     principal a propósito: el código de sync usa el objeto global "firebase" apenas
+     arranca la app, así que el SDK tiene que estar cargado primero. -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+
 <script>
 // ═══════════════════════════════════════════════
 //  DATA — Plan nutricional completo de Diego
@@ -3373,12 +3381,5 @@ renderInventario(); // ya llama actualizarBadgeInventario internamente
 actualizarTasaBCV(true);
 initFirebaseSync();
 </script>
-<!-- Firebase (respaldo en la nube) — SDK "compat" para poder usarlo con una
-     etiqueta script normal, sin necesidad de bundler ni type="module". Ver
-     FIREBASE_CONFIG en el bloque de script principal más arriba. -->
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-
 </body>
 </html>
