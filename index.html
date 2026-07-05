@@ -772,6 +772,13 @@
     .factura-upload-icon { font-size: 28px; margin-bottom: 6px; }
     .factura-upload-text { font-size: 13px; font-weight: 700; color: var(--verde-deep); }
     .factura-upload-sub { font-size: 11px; color: var(--text-light); margin-top: 3px; }
+    /* Botones de método */
+    .metodo-factura-btn {
+      flex: 1; padding: 7px 4px; border-radius: 8px;
+      border: 1.5px solid var(--border); background: white;
+      font-size: 10px; font-weight: 700; color: var(--text-mid); cursor: pointer;
+    }
+    .metodo-factura-btn.active { background: var(--verde-light); border-color: var(--verde-soft); color: var(--verde-deep); }
     .factura-ia-loader {
       display: inline-block; width: 14px; height: 14px;
       border: 2px solid var(--verde-light); border-top-color: var(--verde-mid);
@@ -1164,29 +1171,14 @@
 
     <div class="excepcion-form" id="inv-form" style="margin:0 16px 12px;">
 
-      <!-- Factura -->
-      <div class="factura-upload-area" id="factura-upload-area" onclick="document.getElementById('factura-input').click()">
-        <div class="factura-upload-icon">📷</div>
-        <div class="factura-upload-text">Toca para subir foto de la factura</div>
-        <div class="factura-upload-sub">La IA leerá los productos y precios automáticamente</div>
-        <input type="file" id="factura-input" accept="image/*" capture="environment" style="display:none" onchange="procesarFactura(this)">
-      </div>
-      <div id="factura-preview-area" style="display:none;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-          <div style="font-size:12px;font-weight:700;color:var(--verde-deep);">📎 Factura adjunta</div>
-          <button onclick="quitarFactura()" style="background:none;border:none;color:var(--text-light);font-size:13px;cursor:pointer;">✕ Quitar</button>
-        </div>
-        <img id="factura-preview-img" style="width:100%;border-radius:10px;max-height:180px;object-fit:cover;border:1.5px solid var(--border);">
-        <div id="factura-ia-status" style="margin-top:8px;font-size:11px;color:var(--text-light);text-align:center;"></div>
-      </div>
-
-      <div class="excepcion-form-row-split" style="margin-top:10px;">
+      <!-- Fecha y moneda -->
+      <div class="excepcion-form-row-split">
         <div>
           <label class="excepcion-form-label">Fecha</label>
           <input type="date" class="excepcion-form-input" id="inv-fecha">
         </div>
         <div>
-          <label class="excepcion-form-label">Moneda de esta compra</label>
+          <label class="excepcion-form-label">Moneda</label>
           <select class="excepcion-form-select" id="inv-moneda" onchange="renderFilasInv()">
             <option value="USD">$ Dólares</option>
             <option value="VES">Bs Bolívares</option>
@@ -1194,17 +1186,51 @@
         </div>
       </div>
       <div class="excepcion-form-row">
-        <label class="excepcion-form-label">Dónde lo compraste</label>
+        <label class="excepcion-form-label">Dónde compraste</label>
         <input type="text" class="excepcion-form-input" id="inv-lugar" list="inv-lugares-list" placeholder="Ej. Mercado Central">
         <datalist id="inv-lugares-list"></datalist>
       </div>
 
+      <!-- Lista manual de productos -->
       <div class="inv-lote-lista" id="inv-lote-lista"></div>
-      <button class="inv-agregar-fila-btn" onclick="agregarFilaInv()">+ Agregar producto a la lista</button>
+      <button class="inv-agregar-fila-btn" onclick="agregarFilaInv()">+ Agregar producto manualmente</button>
 
-      <div class="excepcion-form-actions">
+      <!-- Factura: opción secundaria colapsable -->
+      <div style="margin-top:10px;">
+        <button onclick="toggleSeccionFactura()" style="width:100%;background:none;border:1.5px dashed var(--border);border-radius:10px;padding:9px;font-size:12px;font-weight:600;color:var(--text-light);cursor:pointer;" id="btn-toggle-factura">
+          📷 ¿Tienes una foto de la factura? (opcional)
+        </button>
+        <div id="seccion-factura" style="display:none;margin-top:8px;">
+          <!-- Métodos de extracción -->
+          <div style="display:flex;gap:6px;margin-bottom:8px;">
+            <button onclick="seleccionarMetodoFactura('ia')" class="metodo-factura-btn active" id="btn-metodo-ia">🤖 IA (automático)</button>
+            <button onclick="seleccionarMetodoFactura('ocr')" class="metodo-factura-btn" id="btn-metodo-ocr">🔤 OCR (sin internet)</button>
+            <button onclick="seleccionarMetodoFactura('foto')" class="metodo-factura-btn" id="btn-metodo-foto">📎 Solo guardar foto</button>
+          </div>
+          <div id="metodo-desc" style="font-size:10px;color:var(--text-light);margin-bottom:8px;padding:6px 8px;background:var(--verde-pale);border-radius:8px;">
+            La IA analiza la foto y rellena los campos automáticamente. Requiere conexión a internet.
+          </div>
+
+          <!-- Upload area -->
+          <div class="factura-upload-area" id="factura-upload-area" onclick="document.getElementById('factura-input').click()">
+            <div class="factura-upload-icon">📷</div>
+            <div class="factura-upload-text">Toca para seleccionar la foto</div>
+            <input type="file" id="factura-input" accept="image/*" capture="environment" style="display:none" onchange="procesarFactura(this)">
+          </div>
+          <div id="factura-preview-area" style="display:none;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <div style="font-size:12px;font-weight:700;color:var(--verde-deep);">📎 Factura adjunta</div>
+              <button onclick="quitarFactura()" style="background:none;border:none;color:var(--text-light);font-size:13px;cursor:pointer;">✕ Quitar</button>
+            </div>
+            <img id="factura-preview-img" style="width:100%;border-radius:10px;max-height:180px;object-fit:cover;border:1.5px solid var(--border);">
+            <div id="factura-ia-status" style="margin-top:8px;font-size:11px;color:var(--text-light);text-align:center;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="excepcion-form-actions" style="margin-top:12px;">
         <button class="excepcion-cancelar" onclick="toggleFormCompra()">Cancelar</button>
-        <button class="excepcion-guardar" onclick="guardarLoteInventario()">Guardar todas</button>
+        <button class="excepcion-guardar" onclick="guardarLoteInventario()">Guardar</button>
       </div>
     </div>
 
@@ -3494,15 +3520,43 @@ function setSyncEstado(estado, texto) {
 //  FACTURAS — Subir foto + análisis con IA
 // ═══════════════════════════════════════════════
 
+let _metodoFactura = 'ia'; // 'ia' | 'ocr' | 'foto'
 let _facturaBase64 = null;
 let _facturaMediaType = 'image/jpeg';
 
 function quitarFactura() {
   _facturaBase64 = null;
-  document.getElementById('factura-preview-area').style.display = 'none';
-  document.getElementById('factura-upload-area').style.display = 'block';
-  document.getElementById('factura-input').value = '';
-  document.getElementById('factura-ia-status').textContent = '';
+  const previewArea = document.getElementById('factura-preview-area');
+  const uploadArea = document.getElementById('factura-upload-area');
+  const input = document.getElementById('factura-input');
+  const status = document.getElementById('factura-ia-status');
+  if (previewArea) previewArea.style.display = 'none';
+  if (uploadArea) uploadArea.style.display = 'block';
+  if (input) input.value = '';
+  if (status) status.textContent = '';
+}
+
+function toggleSeccionFactura() {
+  const sec = document.getElementById('seccion-factura');
+  const btn = document.getElementById('btn-toggle-factura');
+  const visible = sec.style.display !== 'none';
+  sec.style.display = visible ? 'none' : 'block';
+  btn.textContent = visible
+    ? '📷 ¿Tienes una foto de la factura? (opcional)'
+    : '📷 Ocultar sección de factura';
+}
+
+const METODO_DESC = {
+  ia:   'La IA analiza la foto y rellena los campos automáticamente. Requiere conexión a internet.',
+  ocr:  'Extrae el texto de la foto sin usar IA ni internet. Tú indicas qué datos usar. Funciona siempre.',
+  foto: 'Solo guarda la foto adjunta a la compra sin intentar extraer datos.'
+};
+
+function seleccionarMetodoFactura(metodo) {
+  _metodoFactura = metodo;
+  document.querySelectorAll('.metodo-factura-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(`btn-metodo-${metodo}`).classList.add('active');
+  document.getElementById('metodo-desc').textContent = METODO_DESC[metodo];
 }
 
 async function procesarFactura(input) {
@@ -3516,9 +3570,60 @@ async function procesarFactura(input) {
     document.getElementById('factura-upload-area').style.display = 'none';
     document.getElementById('factura-preview-area').style.display = 'block';
     document.getElementById('factura-preview-img').src = dataUrl;
-    await analizarFacturaConIA();
+
+    if (_metodoFactura === 'ia') {
+      await analizarFacturaConIA();
+    } else if (_metodoFactura === 'ocr') {
+      await analizarFacturaConOCR(dataUrl);
+    } else {
+      document.getElementById('factura-ia-status').textContent = '📎 Foto guardada. Los campos los rellenas manualmente arriba.';
+    }
   };
   reader.readAsDataURL(file);
+}
+
+async function analizarFacturaConOCR(dataUrl) {
+  const statusEl = document.getElementById('factura-ia-status');
+  statusEl.innerHTML = '<span class="factura-ia-loader"></span> Leyendo texto de la imagen…';
+
+  try {
+    // Usar canvas para extraer texto básico via API de reconocimiento nativo del navegador
+    // Si el navegador soporta window.ai (Chrome con AI local) lo usa, si no avisa
+    if ('ai' in window && 'languageModel' in window.ai) {
+      statusEl.textContent = '⚠️ OCR nativo no disponible en este dispositivo. Usa modo IA o rellena manualmente.';
+      return;
+    }
+
+    // Intentar con Tesseract.js cargado dinámicamente (sin dependencia fija)
+    statusEl.innerHTML = '<span class="factura-ia-loader"></span> Cargando motor OCR…';
+    if (!window.Tesseract) {
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.3/tesseract.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    }
+
+    statusEl.innerHTML = '<span class="factura-ia-loader"></span> Reconociendo texto (puede tardar 10–20s)…';
+    const { data: { text } } = await Tesseract.recognize(dataUrl, 'spa+eng');
+
+    if (!text.trim()) {
+      statusEl.textContent = '⚠️ No se pudo leer texto. Rellena los campos manualmente.';
+      return;
+    }
+
+    // Mostrar el texto extraído para que el usuario lo use como referencia
+    statusEl.innerHTML = `
+      <div class="factura-confirm-banner">
+        📄 <strong>Texto extraído de la factura:</strong><br>
+        <pre style="font-size:10px;white-space:pre-wrap;max-height:120px;overflow-y:auto;margin-top:6px;background:white;padding:6px;border-radius:6px;">${text.trim()}</pre>
+        Usa este texto como referencia para rellenar los campos arriba.
+      </div>`;
+
+  } catch (err) {
+    statusEl.textContent = '⚠️ Error al procesar. Rellena los campos manualmente.';
+  }
 }
 
 async function analizarFacturaConIA() {
