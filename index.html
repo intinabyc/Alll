@@ -757,40 +757,6 @@
 
     /* ── INVENTARIO: LOTE DE COMPRAS ── */
     .inv-lote-lista { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
-    /* ── FACTURA UPLOAD ── */
-    .factura-upload-area {
-      border: 2px dashed var(--verde-soft);
-      border-radius: 12px;
-      padding: 18px 16px;
-      text-align: center;
-      cursor: pointer;
-      background: var(--verde-pale);
-      margin-bottom: 12px;
-      transition: background 0.2s;
-    }
-    .factura-upload-area:active { background: var(--verde-light); }
-    .factura-upload-icon { font-size: 28px; margin-bottom: 6px; }
-    .factura-upload-text { font-size: 13px; font-weight: 700; color: var(--verde-deep); }
-    .factura-upload-sub { font-size: 11px; color: var(--text-light); margin-top: 3px; }
-    /* Botones de método */
-    .metodo-factura-btn {
-      flex: 1; padding: 7px 4px; border-radius: 8px;
-      border: 1.5px solid var(--border); background: white;
-      font-size: 10px; font-weight: 700; color: var(--text-mid); cursor: pointer;
-    }
-    .metodo-factura-btn.active { background: var(--verde-light); border-color: var(--verde-soft); color: var(--verde-deep); }
-    .factura-ia-loader {
-      display: inline-block; width: 14px; height: 14px;
-      border: 2px solid var(--verde-light); border-top-color: var(--verde-mid);
-      border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 6px;
-      vertical-align: middle;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .factura-confirm-banner {
-      background: var(--amber-light); border: 1.5px solid #F6C47B;
-      border-radius: 10px; padding: 10px 12px; margin: 8px 0;
-      font-size: 12px; color: #7B4F12; line-height: 1.5;
-    }
     .inv-fila-producto {
       background: var(--white); border: 1.5px solid var(--border); border-radius: 10px; padding: 10px;
       display: flex; flex-direction: column; gap: 6px; position: relative;
@@ -820,6 +786,19 @@
     }
     .inv-fila-resumen span { flex: 1 1 45%; line-height: 1.4; }
     .inv-fila-resumen strong { color: var(--verde-deep); }
+    .metodo-factura-btn {
+      flex: 1; padding: 7px 4px; border-radius: 8px;
+      border: 1.5px solid var(--border); background: white;
+      font-size: 10px; font-weight: 700; color: var(--text-mid); cursor: pointer;
+    }
+    .metodo-factura-btn.active { background: var(--verde-light); border-color: var(--verde-soft); color: var(--verde-deep); }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .factura-ia-loader {
+      display: inline-block; width: 13px; height: 13px;
+      border: 2px solid var(--verde-light); border-top-color: var(--verde-mid);
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+      margin-right: 5px; vertical-align: middle;
+    }
 
     /* ── INVENTARIO: ALERTAS ── */
     .inv-alerta {
@@ -1170,15 +1149,13 @@
     </div>
 
     <div class="excepcion-form" id="inv-form" style="margin:0 16px 12px;">
-
-      <!-- Fecha y moneda -->
       <div class="excepcion-form-row-split">
         <div>
           <label class="excepcion-form-label">Fecha</label>
           <input type="date" class="excepcion-form-input" id="inv-fecha">
         </div>
         <div>
-          <label class="excepcion-form-label">Moneda</label>
+          <label class="excepcion-form-label">Moneda de esta compra</label>
           <select class="excepcion-form-select" id="inv-moneda" onchange="renderFilasInv()">
             <option value="USD">$ Dólares</option>
             <option value="VES">Bs Bolívares</option>
@@ -1186,41 +1163,39 @@
         </div>
       </div>
       <div class="excepcion-form-row">
-        <label class="excepcion-form-label">Dónde compraste</label>
+        <label class="excepcion-form-label">Dónde lo compraste</label>
         <input type="text" class="excepcion-form-input" id="inv-lugar" list="inv-lugares-list" placeholder="Ej. Mercado Central">
         <datalist id="inv-lugares-list"></datalist>
       </div>
 
-      <!-- Lista manual de productos -->
       <div class="inv-lote-lista" id="inv-lote-lista"></div>
       <button class="inv-agregar-fila-btn" onclick="agregarFilaInv()">+ Agregar producto manualmente</button>
 
       <!-- Factura: opción secundaria colapsable -->
       <div style="margin-top:10px;">
-        <button onclick="toggleSeccionFactura()" style="width:100%;background:none;border:1.5px dashed var(--border);border-radius:10px;padding:9px;font-size:12px;font-weight:600;color:var(--text-light);cursor:pointer;" id="btn-toggle-factura">
-          📷 ¿Tienes una foto de la factura? (opcional)
+        <button onclick="toggleSeccionFactura()" id="btn-toggle-factura"
+          style="width:100%;background:none;border:1.5px dashed var(--border);border-radius:10px;padding:9px;font-size:12px;font-weight:600;color:var(--text-light);cursor:pointer;">
+          📷 ¿Tienes foto de la factura? (opcional)
         </button>
         <div id="seccion-factura" style="display:none;margin-top:8px;">
-          <!-- Métodos de extracción -->
           <div style="display:flex;gap:6px;margin-bottom:8px;">
-            <button onclick="seleccionarMetodoFactura('ia')" class="metodo-factura-btn active" id="btn-metodo-ia">🤖 IA (automático)</button>
-            <button onclick="seleccionarMetodoFactura('ocr')" class="metodo-factura-btn" id="btn-metodo-ocr">🔤 OCR (sin internet)</button>
-            <button onclick="seleccionarMetodoFactura('foto')" class="metodo-factura-btn" id="btn-metodo-foto">📎 Solo guardar foto</button>
+            <button onclick="seleccionarMetodoFactura('ia')" class="metodo-factura-btn active" id="btn-metodo-ia">🤖 IA</button>
+            <button onclick="seleccionarMetodoFactura('ocr')" class="metodo-factura-btn" id="btn-metodo-ocr">🔤 OCR</button>
+            <button onclick="seleccionarMetodoFactura('foto')" class="metodo-factura-btn" id="btn-metodo-foto">📎 Solo foto</button>
           </div>
           <div id="metodo-desc" style="font-size:10px;color:var(--text-light);margin-bottom:8px;padding:6px 8px;background:var(--verde-pale);border-radius:8px;">
-            La IA analiza la foto y rellena los campos automáticamente. Requiere conexión a internet.
+            La IA analiza la foto y rellena los campos. Requiere conexión.
           </div>
-
-          <!-- Upload area -->
-          <div class="factura-upload-area" id="factura-upload-area" onclick="document.getElementById('factura-input').click()">
-            <div class="factura-upload-icon">📷</div>
-            <div class="factura-upload-text">Toca para seleccionar la foto</div>
+          <div id="factura-upload-area" onclick="document.getElementById('factura-input').click()"
+            style="border:2px dashed var(--verde-soft);border-radius:12px;padding:16px;text-align:center;cursor:pointer;background:var(--verde-pale);">
+            <div style="font-size:24px;">📷</div>
+            <div style="font-size:13px;font-weight:700;color:var(--verde-deep);">Toca para seleccionar foto</div>
             <input type="file" id="factura-input" accept="image/*" capture="environment" style="display:none" onchange="procesarFactura(this)">
           </div>
           <div id="factura-preview-area" style="display:none;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
               <div style="font-size:12px;font-weight:700;color:var(--verde-deep);">📎 Factura adjunta</div>
-              <button onclick="quitarFactura()" style="background:none;border:none;color:var(--text-light);font-size:13px;cursor:pointer;">✕ Quitar</button>
+              <button onclick="quitarFactura()" style="background:none;border:none;color:var(--text-light);cursor:pointer;">✕ Quitar</button>
             </div>
             <img id="factura-preview-img" style="width:100%;border-radius:10px;max-height:180px;object-fit:cover;border:1.5px solid var(--border);">
             <div id="factura-ia-status" style="margin-top:8px;font-size:11px;color:var(--text-light);text-align:center;"></div>
@@ -2595,6 +2570,25 @@ function getCatalogoInventario() {
       }
     });
   });
+
+  // Fusionar productos personalizados (sin duplicar)
+  const nombresBase = new Set(catalogo.map(p => p.nombre.toLowerCase()));
+  const personalizados = JSON.parse(localStorage.getItem('productos_personalizados') || '[]');
+  personalizados.forEach(p => {
+    if (!nombresBase.has(p.nombre.toLowerCase())) {
+      catalogo.push({
+        nombre: p.nombre,
+        categoria: p.categoria || 'despensa',
+        // consumoSemanal puede ser null si el usuario eligió definir diasStock manual
+        consumoSemanal: p.consumoSemanalG
+          ? { valor: p.consumoSemanalG, unidad: 'g' }
+          : null,
+        diasStockManual: p.diasStockManual || null,
+        esPersonalizado: true
+      });
+    }
+  });
+
   return catalogo;
 }
 
@@ -2711,6 +2705,14 @@ function quitarFilaInv(i) {
 }
 function actualizarFilaInv(i, campo, valor) {
   window._loteInv[i][campo] = valor;
+  // Si es el selector de producto, actualizar el DOM inmediatamente sin re-renderizar
+  if (campo === 'producto') {
+    const filas = document.querySelectorAll('.inv-fila-producto');
+    if (filas[i]) {
+      const sel = filas[i].querySelector('select');
+      if (sel) sel.value = valor;
+    }
+  }
 }
 
 function calcularFilaInv(i) {
@@ -2862,7 +2864,6 @@ async function guardarLoteInventario() {
       unidad: 'g',
       costoUSD, monedaOriginal: moneda, tasaAlComprar: tasa,
       lugar,
-      // Factura adjunta (solo si se subió una foto)
       facturaBase64: _facturaBase64 || null,
       facturaMediaType: _facturaBase64 ? _facturaMediaType : null
     });
@@ -2873,7 +2874,12 @@ async function guardarLoteInventario() {
   document.getElementById('inv-lugar').value = '';
   window._loteInv = [];
   document.getElementById('inv-form').classList.remove('open');
-  quitarFactura(); // limpiar foto de factura
+  quitarFactura();
+  // Ocultar sección factura y resetear botón
+  const sec = document.getElementById('seccion-factura');
+  const btn = document.getElementById('btn-toggle-factura');
+  if (sec) sec.style.display = 'none';
+  if (btn) btn.textContent = '📷 ¿Tienes foto de la factura? (opcional)';
 
   renderInventario();
 }
@@ -2899,22 +2905,46 @@ function normalizarCompra(c) {
 function calcularStockProducto(producto, catalogo) {
   const prod = catalogo.find(p => p.nombre === producto);
   if (!prod) return null;
-  const dailyAvg = prod.consumoSemanal.valor / 7;
+
   const compras = getComprasInventario().filter(c => c.producto === producto).map(normalizarCompra);
   const hoy = new Date(); hoy.setHours(0,0,0,0);
 
-  let stockActual = 0;
-  compras.forEach(c => {
-    const fechaCompra = new Date(c.fecha + 'T00:00:00');
-    const diasTranscurridos = Math.max(0, Math.floor((hoy - fechaCompra) / 86400000));
-    const consumido = diasTranscurridos * dailyAvg;
-    stockActual += Math.max(0, c.cantidadNeta - consumido);
-  });
+  // Stock total acumulado (suma de todas las compras, sin descontar consumo aún)
+  const stockTotalNeto = compras.reduce((sum, c) => sum + c.cantidadNeta, 0);
 
-  const diasRestantes = dailyAvg > 0 ? stockActual / dailyAvg : Infinity;
-  const fechaAgotamiento = new Date(hoy.getTime() + diasRestantes * 86400000);
+  // Si el producto tiene consumo semanal del plan → calcular días por consumo
+  if (prod.consumoSemanal && prod.consumoSemanal.valor > 0) {
+    const dailyAvg = prod.consumoSemanal.valor / 7;
+    let stockActual = 0;
+    compras.forEach(c => {
+      const fechaCompra = new Date(c.fecha + 'T00:00:00');
+      const diasTranscurridos = Math.max(0, Math.floor((hoy - fechaCompra) / 86400000));
+      const consumido = diasTranscurridos * dailyAvg;
+      stockActual += Math.max(0, c.cantidadNeta - consumido);
+    });
+    const diasRestantes = dailyAvg > 0 ? stockActual / dailyAvg : Infinity;
+    const fechaAgotamiento = new Date(hoy.getTime() + diasRestantes * 86400000);
+    return {
+      producto, categoria: prod.categoria,
+      unidad: prod.consumoSemanal.unidad,
+      dailyAvg, stockActual, diasRestantes, fechaAgotamiento,
+      tieneCompras: compras.length > 0,
+      sinConsumoDefinido: false
+    };
+  }
 
-  return { producto, categoria: prod.categoria, unidad: prod.consumoSemanal.unidad, dailyAvg, stockActual, diasRestantes, fechaAgotamiento, tieneCompras: compras.length > 0 };
+  // Si es producto personalizado sin consumo semanal →
+  // Mostrar solo el stock total acumulado, sin calcular días
+  return {
+    producto, categoria: prod.categoria,
+    unidad: 'g',
+    dailyAvg: 0,
+    stockActual: stockTotalNeto,
+    diasRestantes: Infinity, // no se agota por consumo calculado
+    fechaAgotamiento: null,
+    tieneCompras: compras.length > 0,
+    sinConsumoDefinido: true // flag para mostrar diferente en la UI
+  };
 }
 
 function renderInventario() {
@@ -2959,17 +2989,29 @@ function renderInvStock(estados) {
     return;
   }
   cont.innerHTML = estados.map(e => {
+    // Productos sin consumo definido (personalizados sin consumo semanal)
+    if (e.sinConsumoDefinido) {
+      return `<div class="inv-stock-card">
+        <div class="inv-stock-top">
+          <div class="inv-stock-nombre">${e.producto} <span style="font-size:9px;color:var(--text-light);font-weight:400;">personalizado</span></div>
+          <div class="inv-stock-dias verde">En stock</div>
+        </div>
+        <div class="inv-stock-sub">Stock total: ${Math.round(e.stockActual)} g (consumo no definido en el plan)</div>
+        <div class="inv-stock-bar-track"><div class="inv-stock-bar-fill verde" style="width:100%"></div></div>
+      </div>`;
+    }
+    // Productos del plan con consumo calculado
     const nivel = e.diasRestantes <= 1 ? 'roja' : e.diasRestantes <= 4 ? 'amarilla' : 'verde';
     const pct = Math.max(4, Math.min(100, (e.diasRestantes / 10) * 100));
-    const diasTxt = e.diasRestantes <= 0 ? 'Agotado' : `${Math.round(e.diasRestantes)} días`;
-    const fechaTxt = e.diasRestantes > 0 && isFinite(e.diasRestantes)
+    const diasTxt = e.diasRestantes <= 0 ? 'Agotado' : isFinite(e.diasRestantes) ? `${Math.round(e.diasRestantes)} días` : '∞';
+    const fechaTxt = e.diasRestantes > 0 && isFinite(e.diasRestantes) && e.fechaAgotamiento
       ? `Se agota ~ ${e.fechaAgotamiento.getDate()} de ${MESES[e.fechaAgotamiento.getMonth()]}` : '';
     return `<div class="inv-stock-card">
       <div class="inv-stock-top">
         <div class="inv-stock-nombre">${e.producto}</div>
         <div class="inv-stock-dias ${nivel}">${diasTxt}</div>
       </div>
-      <div class="inv-stock-sub">Stock neto: ${Math.round(e.stockActual)} ${e.unidad} (ya descontada la merma) · Consumo: ~${e.dailyAvg.toFixed(0)} ${e.unidad}/día${fechaTxt ? ' · ' + fechaTxt : ''}</div>
+      <div class="inv-stock-sub">Stock neto: ${Math.round(e.stockActual)} ${e.unidad} · Consumo: ~${e.dailyAvg.toFixed(0)} ${e.unidad}/día${fechaTxt ? ' · ' + fechaTxt : ''}</div>
       <div class="inv-stock-bar-track"><div class="inv-stock-bar-fill ${nivel}" style="width:${pct}%"></div></div>
     </div>`;
   }).join('');
@@ -3059,27 +3101,6 @@ function renderInvPrecios() {
     : '<div class="inv-empty">Compra el mismo producto en 2+ lugares distintos para ver la comparación de precios</div>';
 }
 
-function verFactura(id) {
-  const compras = getComprasInventario();
-  const compra = compras.find(c => c.id === id);
-  if (!compra?.facturaBase64) return;
-
-  // Crear modal temporal
-  const modal = document.createElement('div');
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;';
-  modal.innerHTML = `
-    <div style="width:100%;max-width:440px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-        <div style="color:white;font-size:13px;font-weight:700;">📎 Factura — ${compra.producto} · ${compra.fecha}</div>
-        <button onclick="this.closest('div[style]').remove()" style="background:white;border:none;border-radius:50%;width:28px;height:28px;font-size:14px;cursor:pointer;">✕</button>
-      </div>
-      <img src="data:${compra.facturaMediaType};base64,${compra.facturaBase64}"
-        style="width:100%;border-radius:12px;max-height:70vh;object-fit:contain;background:white;">
-    </div>`;
-  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
-  document.body.appendChild(modal);
-}
-
 function renderInvHistorial() {
   const compras = getComprasInventario().map(normalizarCompra).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 25);
   const cont = document.getElementById('inv-historial-container');
@@ -3093,17 +3114,14 @@ function renderInvHistorial() {
     const cantidadTxt = c.mermaPct
       ? `${c.cantidadBruta} ${c.unidad} (merma ${c.mermaPct}% → ${Math.round(c.cantidadNeta)} ${c.unidad} netos)`
       : `${c.cantidadBruta ?? c.cantidad} ${c.unidad}`;
-    const facturaBtn = c.facturaBase64
-      ? `<button onclick="verFactura('${c.id}')" style="background:none;border:none;font-size:16px;cursor:pointer;padding:0 4px;" title="Ver factura">📎</button>`
-      : '';
     return `<div class="inv-historial-item">
       <div class="inv-historial-info">
         <div class="inv-historial-nombre">${c.producto} — ${cantidadTxt}</div>
         <div class="inv-historial-meta">${fechaTxt}${c.lugar ? ' · ' + c.lugar : ''}</div>
       </div>
       <div class="inv-historial-costo">${formatoDual(c.costoUSD)}</div>
-      ${facturaBtn}
       <button class="inv-historial-borrar" onclick="borrarCompraInventario('${c.id}')">✕</button>
+      ${c.facturaBase64 ? `<button onclick="verFactura('${c.id}')" style="background:none;border:none;font-size:16px;cursor:pointer;padding:0 2px;" title="Ver factura">📎</button>` : ''}
     </div>`;
   }).join('');
 }
@@ -3517,24 +3535,17 @@ function setSyncEstado(estado, texto) {
 })();
 
 // ═══════════════════════════════════════════════
-//  FACTURAS — Subir foto + análisis con IA
+//  FACTURAS — Foto + IA + OCR robusto
 // ═══════════════════════════════════════════════
-
-let _metodoFactura = 'ia'; // 'ia' | 'ocr' | 'foto'
 let _facturaBase64 = null;
 let _facturaMediaType = 'image/jpeg';
+let _metodoFactura = 'ia';
 
-function quitarFactura() {
-  _facturaBase64 = null;
-  const previewArea = document.getElementById('factura-preview-area');
-  const uploadArea = document.getElementById('factura-upload-area');
-  const input = document.getElementById('factura-input');
-  const status = document.getElementById('factura-ia-status');
-  if (previewArea) previewArea.style.display = 'none';
-  if (uploadArea) uploadArea.style.display = 'block';
-  if (input) input.value = '';
-  if (status) status.textContent = '';
-}
+const METODO_DESC = {
+  ia:   'La IA analiza la foto y rellena los campos automáticamente. Requiere conexión.',
+  ocr:  'Lee el texto de la foto sin IA ni internet. Tú usas el texto como referencia.',
+  foto: 'Solo guarda la foto sin intentar extraer datos.'
+};
 
 function toggleSeccionFactura() {
   const sec = document.getElementById('seccion-factura');
@@ -3542,21 +3553,27 @@ function toggleSeccionFactura() {
   const visible = sec.style.display !== 'none';
   sec.style.display = visible ? 'none' : 'block';
   btn.textContent = visible
-    ? '📷 ¿Tienes una foto de la factura? (opcional)'
+    ? '📷 ¿Tienes foto de la factura? (opcional)'
     : '📷 Ocultar sección de factura';
 }
-
-const METODO_DESC = {
-  ia:   'La IA analiza la foto y rellena los campos automáticamente. Requiere conexión a internet.',
-  ocr:  'Extrae el texto de la foto sin usar IA ni internet. Tú indicas qué datos usar. Funciona siempre.',
-  foto: 'Solo guarda la foto adjunta a la compra sin intentar extraer datos.'
-};
 
 function seleccionarMetodoFactura(metodo) {
   _metodoFactura = metodo;
   document.querySelectorAll('.metodo-factura-btn').forEach(b => b.classList.remove('active'));
   document.getElementById(`btn-metodo-${metodo}`).classList.add('active');
   document.getElementById('metodo-desc').textContent = METODO_DESC[metodo];
+}
+
+function quitarFactura() {
+  _facturaBase64 = null;
+  const pa = document.getElementById('factura-preview-area');
+  const ua = document.getElementById('factura-upload-area');
+  const inp = document.getElementById('factura-input');
+  const st = document.getElementById('factura-ia-status');
+  if (pa) pa.style.display = 'none';
+  if (ua) ua.style.display = 'block';
+  if (inp) inp.value = '';
+  if (st) st.textContent = '';
 }
 
 async function procesarFactura(input) {
@@ -3570,117 +3587,145 @@ async function procesarFactura(input) {
     document.getElementById('factura-upload-area').style.display = 'none';
     document.getElementById('factura-preview-area').style.display = 'block';
     document.getElementById('factura-preview-img').src = dataUrl;
-
-    if (_metodoFactura === 'ia') {
-      await analizarFacturaConIA();
-    } else if (_metodoFactura === 'ocr') {
-      await analizarFacturaConOCR(dataUrl);
-    } else {
-      document.getElementById('factura-ia-status').textContent = '📎 Foto guardada. Los campos los rellenas manualmente arriba.';
-    }
+    if (_metodoFactura === 'ia') await analizarFacturaConIA();
+    else if (_metodoFactura === 'ocr') await analizarFacturaConOCR(dataUrl);
+    else document.getElementById('factura-ia-status').textContent = '📎 Foto guardada. Rellena los campos manualmente.';
   };
   reader.readAsDataURL(file);
 }
 
-async function analizarFacturaConOCR(dataUrl) {
-  const statusEl = document.getElementById('factura-ia-status');
-  statusEl.innerHTML = '<span class="factura-ia-loader"></span> Leyendo texto de la imagen…';
-
-  try {
-    // Usar canvas para extraer texto básico via API de reconocimiento nativo del navegador
-    // Si el navegador soporta window.ai (Chrome con AI local) lo usa, si no avisa
-    if ('ai' in window && 'languageModel' in window.ai) {
-      statusEl.textContent = '⚠️ OCR nativo no disponible en este dispositivo. Usa modo IA o rellena manualmente.';
-      return;
-    }
-
-    // Intentar con Tesseract.js cargado dinámicamente (sin dependencia fija)
-    statusEl.innerHTML = '<span class="factura-ia-loader"></span> Cargando motor OCR…';
-    if (!window.Tesseract) {
-      await new Promise((res, rej) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.3/tesseract.min.js';
-        s.onload = res; s.onerror = rej;
-        document.head.appendChild(s);
-      });
-    }
-
-    statusEl.innerHTML = '<span class="factura-ia-loader"></span> Reconociendo texto (puede tardar 10–20s)…';
-    const { data: { text } } = await Tesseract.recognize(dataUrl, 'spa+eng');
-
-    if (!text.trim()) {
-      statusEl.textContent = '⚠️ No se pudo leer texto. Rellena los campos manualmente.';
-      return;
-    }
-
-    // Mostrar el texto extraído para que el usuario lo use como referencia
-    statusEl.innerHTML = `
-      <div class="factura-confirm-banner">
-        📄 <strong>Texto extraído de la factura:</strong><br>
-        <pre style="font-size:10px;white-space:pre-wrap;max-height:120px;overflow-y:auto;margin-top:6px;background:white;padding:6px;border-radius:6px;">${text.trim()}</pre>
-        Usa este texto como referencia para rellenar los campos arriba.
-      </div>`;
-
-  } catch (err) {
-    statusEl.textContent = '⚠️ Error al procesar. Rellena los campos manualmente.';
-  }
-}
-
 async function analizarFacturaConIA() {
   const statusEl = document.getElementById('factura-ia-status');
-  statusEl.innerHTML = '<span class="factura-ia-loader"></span> Analizando factura…';
+  statusEl.innerHTML = '<span class="factura-ia-loader"></span> Analizando factura con IA…';
   const catalogo = getCatalogoInventario();
   const nombresProductos = catalogo.map(p => p.nombre).join(', ');
-
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1000,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: _facturaMediaType, data: _facturaBase64 } },
-            { type: 'text', text: `Analiza esta factura y extrae los productos comprados.
+        model: 'claude-sonnet-4-6', max_tokens: 1000,
+        messages: [{ role: 'user', content: [
+          { type: 'image', source: { type: 'base64', media_type: _facturaMediaType, data: _facturaBase64 } },
+          { type: 'text', text: `Analiza esta factura y extrae productos de alimentos.
 Lista de productos que me interesan: ${nombresProductos}
-Para cada producto encontrado devuelve un JSON array:
-[{ "producto": "nombre del producto (el más cercano de mi lista si aplica)", "cantidadKg": número en kg, "precioKg": precio por kg, "mermaG": 0 }]
-Si solo hay precio total calcula precioKg = precioTotal / cantidadKg.
-Devuelve SOLO el JSON array sin texto ni comillas de código.` }
-          ]
-        }]
+Devuelve SOLO un JSON array (sin texto ni markdown):
+[{"producto":"nombre","cantidadKg":número,"precioKg":número,"mermaG":0}]
+Si solo hay precio total calcula precioKg = total/cantidadKg.` }
+        ]}]
       })
     });
-
     const data = await response.json();
     const texto = data.content?.map(b => b.text || '').join('') || '';
     let productos = [];
-    try {
-      productos = JSON.parse(texto.replace(/```json|```/g, '').trim());
-    } catch {
-      statusEl.textContent = '⚠️ No se pudieron extraer datos. Rellena los campos manualmente.';
-      return;
-    }
-
+    try { productos = JSON.parse(texto.replace(/```json|```/g, '').trim()); } catch { /**/ }
     if (!Array.isArray(productos) || productos.length === 0) {
-      statusEl.textContent = '⚠️ No se encontraron productos reconocibles. Rellena manualmente.';
-      return;
+      statusEl.textContent = '⚠️ No se encontraron productos. Rellena manualmente.'; return;
     }
-
     window._loteInv = productos.map(p => ({
-      producto: p.producto || '',
-      cantidadKg: p.cantidadKg ? String(p.cantidadKg) : '',
-      mermaG: p.mermaG ? String(p.mermaG) : '0',
-      precioKg: p.precioKg ? String(p.precioKg) : ''
+      producto: p.producto || '', cantidadKg: String(p.cantidadKg || ''),
+      mermaG: String(p.mermaG || '0'), precioKg: String(p.precioKg || '')
     }));
     renderFilasInv();
-    statusEl.innerHTML = `<div class="factura-confirm-banner">✅ La IA encontró <strong>${productos.length} producto(s)</strong>. Revisa los datos, ajusta si es necesario y toca <strong>"Guardar todas"</strong>.</div>`;
-
+    statusEl.innerHTML = `<span style="color:var(--verde-mid);font-weight:700;">✅ ${productos.length} producto(s) encontrados. Revisa y ajusta si es necesario.</span>`;
   } catch (err) {
     statusEl.textContent = '⚠️ Error al analizar. Rellena los campos manualmente.';
   }
+}
+
+async function analizarFacturaConOCR(dataUrl) {
+  const statusEl = document.getElementById('factura-ia-status');
+  statusEl.innerHTML = '<span class="factura-ia-loader"></span> Cargando motor OCR…';
+
+  // Timeout de 30 segundos para evitar esperas infinitas
+  const timeout = new Promise((_, rej) =>
+    setTimeout(() => rej(new Error('timeout')), 30000)
+  );
+
+  try {
+    // Cargar Tesseract dinámicamente solo si no está cargado
+    if (!window.Tesseract) {
+      await Promise.race([
+        new Promise((res, rej) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.3/tesseract.min.js';
+          s.onload = res;
+          s.onerror = () => rej(new Error('No se pudo cargar Tesseract'));
+          document.head.appendChild(s);
+        }),
+        timeout
+      ]);
+    }
+
+    statusEl.innerHTML = '<span class="factura-ia-loader"></span> Reconociendo texto (puede tardar 15–30s)…';
+
+    // Reducir resolución de la imagen antes de enviar a Tesseract para acelerar
+    const imgComprimida = await comprimirImagenOCR(dataUrl);
+
+    const { data: { text } } = await Promise.race([
+      Tesseract.recognize(imgComprimida, 'spa+eng', {
+        logger: m => {
+          if (m.status === 'recognizing text') {
+            statusEl.innerHTML = `<span class="factura-ia-loader"></span> Procesando… ${Math.round(m.progress * 100)}%`;
+          }
+        }
+      }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 45000))
+    ]);
+
+    if (!text?.trim()) {
+      statusEl.textContent = '⚠️ No se pudo leer texto. Rellena manualmente.'; return;
+    }
+
+    statusEl.innerHTML = `
+      <div style="background:#FEF3E2;border:1px solid #F6C47B;border-radius:8px;padding:8px 10px;margin-top:4px;">
+        <div style="font-size:11px;font-weight:700;color:#7B4F12;margin-bottom:4px;">📄 Texto extraído — úsalo como referencia:</div>
+        <pre style="font-size:10px;white-space:pre-wrap;max-height:100px;overflow-y:auto;color:#7B4F12;margin:0;">${text.trim().slice(0, 800)}</pre>
+      </div>`;
+
+  } catch (err) {
+    if (err.message === 'timeout') {
+      statusEl.textContent = '⏱ El OCR tardó demasiado. Intenta con una foto más clara o usa el modo IA.';
+    } else {
+      statusEl.textContent = `⚠️ Error OCR: ${err.message}. Rellena manualmente.`;
+    }
+  }
+}
+
+// Comprimir imagen antes de OCR para acelerar procesamiento
+async function comprimirImagenOCR(dataUrl) {
+  return new Promise(res => {
+    const img = new Image();
+    img.onload = () => {
+      const maxW = 1200;
+      const ratio = Math.min(1, maxW / img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width * ratio;
+      canvas.height = img.height * ratio;
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      res(canvas.toDataURL('image/jpeg', 0.8));
+    };
+    img.src = dataUrl;
+  });
+}
+
+// Ver factura guardada en historial
+function verFactura(id) {
+  const compra = getComprasInventario().find(c => c.id === id);
+  if (!compra?.facturaBase64) return;
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="width:100%;max-width:440px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="color:white;font-size:13px;font-weight:700;">📎 ${compra.producto} · ${compra.fecha}</div>
+        <button onclick="this.closest('div').parentElement.remove()" style="background:white;border:none;border-radius:50%;width:28px;height:28px;font-size:14px;cursor:pointer;">✕</button>
+      </div>
+      <img src="data:${compra.facturaMediaType};base64,${compra.facturaBase64}"
+        style="width:100%;border-radius:12px;max-height:70vh;object-fit:contain;background:white;">
+    </div>`;
+  modal.onclick = e => { if (e.target === modal) modal.remove(); };
+  document.body.appendChild(modal);
 }
 
 init();
