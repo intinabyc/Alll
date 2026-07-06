@@ -878,6 +878,46 @@
     }
     .inv-empty { font-size: 12px; color: var(--text-light); text-align: center; padding: 16px; }
 
+    /* ── INVENTARIO: AJUSTE MANUAL DE STOCK ── */
+    .inv-stock-ajustar-btn {
+      background: none; border: 1px solid var(--border); color: var(--text-light);
+      font-size: 10.5px; font-weight: 700; padding: 4px 9px; border-radius: var(--radius-pill);
+      cursor: pointer; margin-top: 8px;
+    }
+    .ajuste-form {
+      display: none; margin-top: 10px; background: var(--verde-pale); border-radius: 10px; padding: 12px;
+    }
+    .ajuste-form.open { display: block; }
+    .ajuste-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+    .ajuste-form-grid label { font-size: 9.5px; font-weight: 700; color: var(--text-light); text-transform: uppercase; display: block; margin-bottom: 2px; }
+    .ajuste-form-grid input {
+      width: 100%; border: 1.5px solid var(--border); border-radius: 7px; padding: 6px 7px; font-size: 12px;
+      font-family: var(--font-body); color: var(--text-dark);
+    }
+    .ajuste-neto-preview { font-size: 11px; color: var(--text-mid); margin-bottom: 8px; }
+    .ajuste-neto-preview strong { color: var(--verde-deep); }
+    .ajuste-signo-row { display: flex; gap: 8px; margin-bottom: 4px; }
+    .ajuste-signo-btn {
+      flex: 1; padding: 9px; border-radius: 9px; font-size: 12px; font-weight: 700; cursor: pointer; border: none;
+    }
+    .ajuste-signo-btn.resta { background: #FEF2F2; color: #991B1B; }
+    .ajuste-signo-btn.suma { background: var(--verde-light); color: var(--verde-deep); }
+    .inv-ajuste-item {
+      margin: 0 16px 6px;
+      background: var(--white); border: 1px solid var(--border); border-radius: 10px;
+      padding: 9px 12px; display: flex; align-items: center; gap: 10px;
+    }
+    .inv-ajuste-info { flex: 1; min-width: 0; }
+    .inv-ajuste-nombre { font-size: 12.5px; font-weight: 700; color: var(--text-dark); }
+    .inv-ajuste-meta { font-size: 10.5px; color: var(--text-light); margin-top: 1px; }
+    .inv-ajuste-delta { font-size: 12px; font-weight: 700; flex-shrink: 0; }
+    .inv-ajuste-delta.neg { color: #DC2626; }
+    .inv-ajuste-delta.pos { color: var(--verde-mid); }
+    .inv-ajuste-borrar {
+      width: 24px; height: 24px; border-radius: 50%; background: var(--verde-pale); border: none;
+      color: var(--text-light); font-size: 12px; cursor: pointer; flex-shrink: 0;
+    }
+
     /* ── GENERADOR DE RECETAS IA ── */
     .ia-receta-box {
       margin: 14px 16px 0;
@@ -1098,17 +1138,8 @@
     </div>
     <div id="compras-container"></div>
     <button class="compras-limpiar" onclick="limpiarCompras()">Limpiar selección</button>
-  </div>
 
-  <!-- ══ PANEL INVENTARIO ══ -->
-  <div class="tab-panel" id="panel-inventario">
-    <div class="recetas-hero">
-      <div class="eyebrow">Inventario y gastos</div>
-      <h2>Despensa</h2>
-      <p>Registra compras, controla el stock y el gasto</p>
-    </div>
-
-    <div id="inv-alertas"></div>
+    <div class="section-label">🧾 Registrar lo que compraste</div>
     <div id="inv-tasa-banner"></div>
 
     <div style="padding:0 16px 0;">
@@ -1209,9 +1240,6 @@
       </div>
     </div>
 
-    <div class="section-label">📋 Estado del stock</div>
-    <div id="inv-stock-container"></div>
-
     <div class="section-label">💰 Gasto</div>
     <div id="inv-gasto-container"></div>
 
@@ -1220,6 +1248,23 @@
 
     <div class="section-label">🧾 Compras registradas</div>
     <div id="inv-historial-container"></div>
+  </div>
+
+  <!-- ══ PANEL INVENTARIO ══ -->
+  <div class="tab-panel" id="panel-inventario">
+    <div class="recetas-hero">
+      <div class="eyebrow">Stock actual</div>
+      <h2>Despensa</h2>
+      <p>Consulta el stock y corrígelo si algo no cuadra</p>
+    </div>
+
+    <div id="inv-alertas"></div>
+
+    <div class="section-label">📋 Estado del stock</div>
+    <div id="inv-stock-container"></div>
+
+    <div class="section-label">🛠️ Historial de ajustes</div>
+    <div id="inv-ajustes-container"></div>
   </div>
 
 </main>
@@ -1955,7 +2000,8 @@ function cambiarTab(tab) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById(`panel-${tab}`).classList.add('active');
   document.getElementById(`nav-${tab}`).classList.add('active');
-  if (tab === 'inventario') { renderInventario(); actualizarTasaBCV(true); }
+  if (tab === 'inventario') { renderInventario(); }
+  if (tab === 'compras') { renderComprasRegistro(); poblarLugaresInv(); actualizarTasaBCV(true); }
 }
 
 // ═══════════════════════════════════════════════
@@ -2624,7 +2670,7 @@ async function actualizarTasaBCV(forzarRender) {
   } catch (err) {
     console.warn('No se pudo consultar la tasa BCV (¿sin internet?)', err);
   }
-  if (forzarRender) renderInventario();
+  if (forzarRender) renderComprasRegistro();
 }
 
 function setTasaBCVManual(valor) {
@@ -2634,7 +2680,7 @@ function setTasaBCVManual(valor) {
   window._tasaBCVFecha = new Date().toISOString();
   window._tasaBCVManual = true;
   localStorage.setItem('bcv_tasa_cache', JSON.stringify({ tasa, fecha: window._tasaBCVFecha, manual: true }));
-  renderInventario();
+  renderComprasRegistro();
 }
 
 function bsDeUSD(usd) {
@@ -2882,6 +2928,7 @@ async function guardarLoteInventario() {
   if (btn) btn.textContent = '📷 ¿Tienes foto de la factura? (opcional)';
 
   renderInventario();
+  renderComprasRegistro();
 }
 
 function borrarCompraInventario(id) {
@@ -2889,6 +2936,7 @@ function borrarCompraInventario(id) {
   compras = compras.filter(c => c.id !== id);
   saveComprasInventario(compras);
   renderInventario();
+  renderComprasRegistro();
 }
 
 // Backward-compat: compras guardadas con el esquema viejo (costo/cantidad sin merma)
@@ -2901,16 +2949,37 @@ function normalizarCompra(c) {
 }
 
 // Calcula el stock restante de un producto sumando todas sus compras (ya descontada la merma)
-// y restando el consumo estimado (consumo semanal del PLAN ÷ 7) desde la fecha de cada compra.
+// y restando el consumo estimado (consumo semanal del PLAN ÷ 7) desde la fecha de cada compra,
+// y luego aplicando los ajustes manuales que el usuario haya registrado (ver sección AJUSTES
+// MANUALES DE STOCK más abajo) para corregir casos donde el cálculo no coincide con la realidad
+// (merma real distinta a la estimada, porciones que varían del plan, algo se dañó, etc.).
 function calcularStockProducto(producto, catalogo) {
   const prod = catalogo.find(p => p.nombre === producto);
   if (!prod) return null;
 
   const compras = getComprasInventario().filter(c => c.producto === producto).map(normalizarCompra);
+  const ajustes = getAjustesProducto(producto);
   const hoy = new Date(); hoy.setHours(0,0,0,0);
 
-  // Stock total acumulado (suma de todas las compras, sin descontar consumo aún)
-  const stockTotalNeto = compras.reduce((sum, c) => sum + c.cantidadNeta, 0);
+  // Aplica los ajustes manuales sobre un stock ya calculado desde las compras. Los
+  // ajustes positivos (se sumó al stock) decaen igual que una compra desde su fecha;
+  // los negativos (se restó del stock: merma extra, porciones más grandes, daño, etc.)
+  // se descuentan de una vez, porque son una pérdida real que ya ocurrió y no
+  // "se regenera" con el paso de los días.
+  function aplicarAjustes(stockBase, dailyAvg) {
+    let stock = stockBase;
+    ajustes.forEach(a => {
+      if (a.deltaG >= 0) {
+        const fechaAj = new Date(a.fecha + 'T00:00:00');
+        const dias = Math.max(0, Math.floor((hoy - fechaAj) / 86400000));
+        const consumido = dias * dailyAvg;
+        stock += Math.max(0, a.deltaG - consumido);
+      } else {
+        stock -= Math.abs(a.deltaG);
+      }
+    });
+    return Math.max(0, stock);
+  }
 
   // Si el producto tiene consumo semanal del plan → calcular días por consumo
   if (prod.consumoSemanal && prod.consumoSemanal.valor > 0) {
@@ -2922,6 +2991,7 @@ function calcularStockProducto(producto, catalogo) {
       const consumido = diasTranscurridos * dailyAvg;
       stockActual += Math.max(0, c.cantidadNeta - consumido);
     });
+    stockActual = aplicarAjustes(stockActual, dailyAvg);
     const diasRestantes = dailyAvg > 0 ? stockActual / dailyAvg : Infinity;
     const fechaAgotamiento = new Date(hoy.getTime() + diasRestantes * 86400000);
     return {
@@ -2934,12 +3004,14 @@ function calcularStockProducto(producto, catalogo) {
   }
 
   // Si es producto personalizado sin consumo semanal →
-  // Mostrar solo el stock total acumulado, sin calcular días
+  // Mostrar solo el stock total acumulado (compras + ajustes), sin calcular días
+  const stockTotalNeto = compras.reduce((sum, c) => sum + c.cantidadNeta, 0)
+    + ajustes.reduce((sum, a) => sum + a.deltaG, 0);
   return {
     producto, categoria: prod.categoria,
     unidad: 'g',
     dailyAvg: 0,
-    stockActual: stockTotalNeto,
+    stockActual: Math.max(0, stockTotalNeto),
     diasRestantes: Infinity, // no se agota por consumo calculado
     fechaAgotamiento: null,
     tieneCompras: compras.length > 0,
@@ -2947,6 +3019,9 @@ function calcularStockProducto(producto, catalogo) {
   };
 }
 
+// Vista de Inventario: solo stock + alertas + posibilidad de corregirlo a mano.
+// El registro de compras (tasa, gasto, precios, historial) vive ahora en el tab Compras
+// — ver renderComprasRegistro() más abajo.
 function renderInventario() {
   const catalogo = getCatalogoInventario();
   const productosConCompras = [...new Set(getComprasInventario().map(c => c.producto))];
@@ -2955,13 +3030,20 @@ function renderInventario() {
     .filter(Boolean)
     .sort((a, b) => a.diasRestantes - b.diasRestantes);
 
-  renderTasaBanner();
   renderInvAlertas(estados);
   renderInvStock(estados);
+  renderInvAjustesHistorial();
+  actualizarBadgeInventario(); // badge automático en tab
+}
+
+// Registro de compras: tasa BCV, gasto, comparación de precios e historial.
+// Vive en el tab Compras y se refresca al abrir ese tab o al guardar/borrar una compra.
+function renderComprasRegistro() {
+  const catalogo = getCatalogoInventario();
+  renderTasaBanner();
   renderInvGasto(catalogo);
   renderInvPrecios();
   renderInvHistorial();
-  actualizarBadgeInventario(); // badge automático en tab
 }
 
 function renderInvAlertas(estados) {
@@ -2985,7 +3067,7 @@ function renderInvAlertas(estados) {
 function renderInvStock(estados) {
   const cont = document.getElementById('inv-stock-container');
   if (estados.length === 0) {
-    cont.innerHTML = '<div class="inv-stock-empty">Aún no has registrado compras. Usa "+ Registrar compras" para empezar a ver el stock.</div>';
+    cont.innerHTML = '<div class="inv-stock-empty">Aún no has registrado compras. Ve al tab Compras → "+ Registrar compras" para empezar a ver el stock.</div>';
     return;
   }
   cont.innerHTML = estados.map(e => {
@@ -2998,6 +3080,7 @@ function renderInvStock(estados) {
         </div>
         <div class="inv-stock-sub">Stock total: ${Math.round(e.stockActual)} g (consumo no definido en el plan)</div>
         <div class="inv-stock-bar-track"><div class="inv-stock-bar-fill verde" style="width:100%"></div></div>
+        ${construirAjusteFormHTML(e.producto)}
       </div>`;
     }
     // Productos del plan con consumo calculado
@@ -3013,6 +3096,139 @@ function renderInvStock(estados) {
       </div>
       <div class="inv-stock-sub">Stock neto: ${Math.round(e.stockActual)} ${e.unidad} · Consumo: ~${e.dailyAvg.toFixed(0)} ${e.unidad}/día${fechaTxt ? ' · ' + fechaTxt : ''}</div>
       <div class="inv-stock-bar-track"><div class="inv-stock-bar-fill ${nivel}" style="width:${pct}%"></div></div>
+      ${construirAjusteFormHTML(e.producto)}
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════
+//  AJUSTES MANUALES DE STOCK (Inventario)
+// ═══════════════════════════════════════════════
+// localStorage 'inventario_ajustes': [
+//   { id, producto, fecha, cantidadKg, mermaG, netoG, signo: 1|-1, deltaG, nota }
+// ]
+// Reutiliza la MISMA lógica de "Registrar compras" (cantidad en kg + merma en gramos →
+// neto calculado), pero en vez de sumarlo como una compra nueva, el usuario elige si ese
+// neto se RESTA del stock (mermó más de lo calculado, porciones más grandes que el plan
+// —ej. pollo porcionado en bandejas de 110–120 g en vez del gramaje fijo del plan—, algo
+// se dañó) o se SUMA (había más de lo que el cálculo estimaba).
+
+function getAjustesInventario() {
+  return JSON.parse(localStorage.getItem('inventario_ajustes') || '[]');
+}
+function saveAjustesInventario(arr) {
+  localStorage.setItem('inventario_ajustes', JSON.stringify(arr));
+}
+function getAjustesProducto(producto) {
+  return getAjustesInventario().filter(a => a.producto === producto);
+}
+
+let _ajusteProductoAbierto = null;
+let _ajusteState = { cantidadKg: '', mermaG: '', nota: '' };
+
+function toggleAjusteForm(producto) {
+  _ajusteProductoAbierto = _ajusteProductoAbierto === producto ? null : producto;
+  _ajusteState = { cantidadKg: '', mermaG: '', nota: '' };
+  renderInventario();
+}
+
+function actualizarAjusteCampo(campo, valor) {
+  _ajusteState[campo] = valor;
+  actualizarAjustePreview();
+}
+
+function calcularNetoAjuste() {
+  const kg = parseFloat(_ajusteState.cantidadKg) || 0;
+  const mermaG = parseFloat(_ajusteState.mermaG) || 0;
+  const netoG = Math.max(0, kg * 1000 - mermaG);
+  return { kg, mermaG, netoG };
+}
+
+function actualizarAjustePreview() {
+  const el = document.getElementById('ajuste-preview');
+  if (!el) return;
+  const { netoG } = calcularNetoAjuste();
+  el.innerHTML = netoG > 0 ? `Neto a aplicar: <strong>${Math.round(netoG)} g</strong>` : 'Completa cantidad (y merma si aplica) para ver el neto';
+}
+
+function guardarAjuste(signo) {
+  const producto = _ajusteProductoAbierto;
+  if (!producto) return;
+  const { kg, mermaG, netoG } = calcularNetoAjuste();
+  if (!kg || netoG <= 0) { alert('Indica al menos la cantidad (kg). La merma es opcional.'); return; }
+
+  const ajustes = getAjustesInventario();
+  ajustes.push({
+    id: 'AJ' + Date.now() + Math.random().toString(36).slice(2, 6),
+    producto,
+    fecha: new Date().toISOString().slice(0, 10),
+    cantidadKg: kg, mermaG,
+    netoG: Math.round(netoG),
+    signo, deltaG: signo * Math.round(netoG),
+    nota: _ajusteState.nota.trim()
+  });
+  saveAjustesInventario(ajustes);
+
+  _ajusteProductoAbierto = null;
+  _ajusteState = { cantidadKg: '', mermaG: '', nota: '' };
+  renderInventario();
+}
+
+function borrarAjuste(id) {
+  let ajustes = getAjustesInventario();
+  ajustes = ajustes.filter(a => a.id !== id);
+  saveAjustesInventario(ajustes);
+  renderInventario();
+}
+
+function construirAjusteFormHTML(producto) {
+  const abierto = _ajusteProductoAbierto === producto;
+  const productoEscapado = producto.replace(/'/g, "\\'");
+  return `
+    <button class="inv-stock-ajustar-btn" onclick="toggleAjusteForm('${productoEscapado}')">${abierto ? '✕ Cancelar ajuste' : '✏️ Ajustar stock'}</button>
+    <div class="ajuste-form ${abierto ? 'open' : ''}">
+      <div class="ajuste-form-grid">
+        <div>
+          <label>Cantidad (kg)</label>
+          <input type="number" step="0.1" min="0" placeholder="0.5" value="${_ajusteState.cantidadKg}" oninput="actualizarAjusteCampo('cantidadKg', this.value)">
+        </div>
+        <div>
+          <label>Merma (g)</label>
+          <input type="number" step="1" min="0" placeholder="0" value="${_ajusteState.mermaG}" oninput="actualizarAjusteCampo('mermaG', this.value)">
+        </div>
+      </div>
+      <input type="text" class="excepcion-form-input" id="ajuste-nota" placeholder="Nota (ej. porciones de 110–120 g)" style="margin-bottom:8px;" value="${_ajusteState.nota}" oninput="actualizarAjusteCampo('nota', this.value)">
+      <div class="ajuste-neto-preview" id="ajuste-preview">Completa cantidad (y merma si aplica) para ver el neto</div>
+      <div class="ajuste-signo-row">
+        <button class="ajuste-signo-btn resta" onclick="guardarAjuste(-1)">➖ Restar del stock</button>
+        <button class="ajuste-signo-btn suma" onclick="guardarAjuste(1)">➕ Sumar al stock</button>
+      </div>
+    </div>`;
+}
+
+function renderInvAjustesHistorial() {
+  const cont = document.getElementById('inv-ajustes-container');
+  if (!cont) return;
+  const ajustes = getAjustesInventario()
+    .slice()
+    .sort((a, b) => b.fecha.localeCompare(a.fecha) || b.id.localeCompare(a.id))
+    .slice(0, 25);
+  if (ajustes.length === 0) {
+    cont.innerHTML = '<div class="inv-empty">No hay ajustes registrados. Si el stock calculado no coincide con la realidad (merma extra, porciones distintas al plan, algo se dañó), usa "✏️ Ajustar stock" en la tarjeta del producto.</div>';
+    return;
+  }
+  cont.innerHTML = ajustes.map(a => {
+    const f = new Date(a.fecha + 'T12:00:00');
+    const fechaTxt = `${f.getDate()} ${MESES[f.getMonth()].slice(0,3)}`;
+    const signoTxt = a.signo > 0 ? '+' : '−';
+    const claseDelta = a.signo > 0 ? 'pos' : 'neg';
+    return `<div class="inv-ajuste-item">
+      <div class="inv-ajuste-info">
+        <div class="inv-ajuste-nombre">${a.producto}</div>
+        <div class="inv-ajuste-meta">${fechaTxt}${a.mermaG ? ` · merma ${a.mermaG}g` : ''}${a.nota ? ' · ' + a.nota : ''}</div>
+      </div>
+      <div class="inv-ajuste-delta ${claseDelta}">${signoTxt}${Math.abs(a.deltaG)} g</div>
+      <button class="inv-ajuste-borrar" onclick="borrarAjuste('${a.id}')">✕</button>
     </div>`;
   }).join('');
 }
@@ -3304,7 +3520,7 @@ const FIREBASE_CONFIG = {
 };
 
 // Claves de localStorage que se respaldan en la nube (más las que empiecen con "cocinar_")
-const SYNC_KEYS_FIJAS = ['plan_overrides', 'plan_excepciones', 'recetas_historial', 'compras_state', 'inventario_compras', 'productos_personalizados'];
+const SYNC_KEYS_FIJAS = ['plan_overrides', 'plan_excepciones', 'recetas_historial', 'compras_state', 'inventario_compras', 'productos_personalizados', 'inventario_ajustes'];
 
 let _firebaseListo = false;
 let _syncDb = null;
@@ -3482,6 +3698,7 @@ function aplicarDataRemota(data) {
   renderCompras();
   renderListaExcepciones();
   renderInventario();
+  renderComprasRegistro();
 }
 
 function escucharCambiosRemotos() {
@@ -3738,6 +3955,7 @@ renderRecetas();
 renderCompras();
 renderListaExcepciones();
 renderInventario();
+renderComprasRegistro();
 actualizarTasaBCV(true);
 window._firebaseReadyPromise = initFirebaseSync();
 </script>
