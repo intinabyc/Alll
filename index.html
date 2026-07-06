@@ -3140,19 +3140,13 @@ function saveProductosPersonalizados(arr) {
   localStorage.setItem('productos_personalizados', JSON.stringify(arr));
 }
 
-// Extiende getCatalogoInventario para incluir productos personalizados
-const _getCatalogoInventarioBase = getCatalogoInventario;
-function getCatalogoInventario() {
-  const base = _getCatalogoInventarioBase();
-  const personalizados = getProductosPersonalizados().map(p => ({
-    nombre: p.nombre,
-    categoria: p.categoria,
-    consumoSemanal: { valor: p.consumoSemanalG, unidad: 'g' }
-  }));
-  // Evitar duplicados por nombre
-  const nombres = new Set(base.map(b => b.nombre.toLowerCase()));
-  return [...base, ...personalizados.filter(p => !nombres.has(p.nombre.toLowerCase()))];
-}
+// NOTA: getCatalogoInventario() ya fusiona productos_personalizados directamente
+// (ver definición arriba, cerca de COMPRAS_SEMANALES). Antes había un segundo intento
+// de "extenderla" aquí guardando una referencia a la versión original y redefiniéndola
+// — pero como ambas declaraciones se llaman `function getCatalogoInventario`, JS hoistea
+// las dos y la constante terminaba apuntando a la propia función redefinida, causando
+// recursión infinita (y por eso el selector de producto no cargaba nada). Se eliminó
+// ese bloque duplicado; con una sola definición el selector vuelve a poblarse bien.
 
 function toggleFormProductoPersonalizado() {
   const form = document.getElementById('form-producto-personalizado');
@@ -3662,16 +3656,27 @@ async function analizarFacturaConOCR(dataUrl) {
     // Reducir resolución de la imagen antes de enviar a Tesseract para acelerar
     const imgComprimida = await comprimirImagenOCR(dataUrl);
 
-    const { data: { text } } = await Promise.race([
-      Tesseract.recognize(imgComprimida, 'spa+eng', {
+    // Tesseract.js v5 eliminó la forma directa Tesseract.recognize(...) que solo
+    // existía en v2-v4 — ahora hay que crear (y luego cerrar) un worker explícito.
+    // Con la API vieja la promesa de recognize() nunca llegaba a resolver ni a
+    // rechazar, así que el OCR se quedaba "cargando" para siempre sin dar error.
+    let worker;
+    try {
+      worker = await Tesseract.createWorker('spa+eng', 1, {
         logger: m => {
           if (m.status === 'recognizing text') {
             statusEl.innerHTML = `<span class="factura-ia-loader"></span> Procesando… ${Math.round(m.progress * 100)}%`;
           }
         }
-      }),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 45000))
-    ]);
+      });
+      const { data: { text: textoReconocido } } = await Promise.race([
+        worker.recognize(imgComprimida),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 45000))
+      ]);
+      var text = textoReconocido;
+    } finally {
+      if (worker) await worker.terminate();
+    }
 
     if (!text?.trim()) {
       statusEl.textContent = '⚠️ No se pudo leer texto. Rellena manualmente.'; return;
