@@ -2201,6 +2201,11 @@ function renderCompras() {
     const diaDisplay = DIAS_DISPLAY[DIAS_ES.indexOf(diaKey)];
     const data = COMPRAS_DIARIAS[diaKey];
     const manana = getCocinarManana(diaKey);
+    // Antes la clave era `diaria_${diaKey}_i` (ej. "diaria_lunes_0"), es decir por NOMBRE
+    // de día — así que marcar "listo" un lunes lo dejaba marcado para siempre el lunes
+    // siguiente también. Ahora se usa la fecha real de hoy, así cada día (y por lo tanto
+    // cada semana) empieza con la lista destildada sin tener que limpiarla a mano.
+    const fechaHoy = new Date().toISOString().slice(0, 10);
 
     const titulo = document.createElement('div');
     titulo.className = 'compras-dia-titulo';
@@ -2210,7 +2215,7 @@ function renderCompras() {
     const cat = document.createElement('div');
     cat.className = 'compras-categoria';
     data.items.forEach((item, i) => {
-      const key = `diaria_${diaKey}_${i}`;
+      const key = `diaria_${fechaHoy}_${i}`;
       // El ítem de tubérculo del dataset original está mal etiquetado: muestra el
       // tubérculo de HOY aunque la nota dice "para mañana". Se reemplaza aquí por el
       // tubérculo real de mañana (misma fuente que usa el widget "Cocinar hoy para mañana").
@@ -2306,6 +2311,50 @@ const FRUTAS_CATALOGO = [
   { key: 'uvas',          label: 'Uvas'           }
 ];
 
+// Mapeo inverso: el catálogo de Inventario usa nombres "planos" (ej. "Chayota",
+// "Calabacín") tal como aparecen en la lista de compras, mientras que la matriz de
+// Ajustes agrupa por combinaciones de plato (ej. "chayota_vainitas"). Un mismo
+// ingrediente plano puede participar en más de una combinación (el Calabacín aparece
+// en 3 combos distintos a lo largo de la semana) — este mapa hace posible traducir de
+// uno a otro para que el consumo estimado en Inventario SÍ refleje lo que se ajustó
+// en la matriz. Es específico del plan de Diego (no genérico).
+const VEG_PRODUCTO_A_KEYS = {
+  'Zanahoria':              ['zanahoria_calabacin'],
+  'Calabacín':              ['zanahoria_calabacin', 'tomate_calabacin', 'brocoli_calabacin'],
+  'Chayota':                ['chayota_vainitas', 'auyama_chayota'],
+  'Vainitas':               ['chayota_vainitas', 'vainitas_esparragos'],
+  'Auyama':                 ['auyama_chayota'],
+  'Brócoli / Coliflor':     ['brocoli_calabacin'],
+  'Tomate':                 ['tomate_calabacin']
+};
+const FRUTA_PRODUCTO_A_KEYS = {
+  'Manzana':  ['manzana_pera'],
+  'Pera':     ['manzana_pera'],
+  'Durazno':  ['durazno_uvas', 'durazno'],
+  'Uvas':     ['durazno_uvas', 'uvas'],
+  'Lechoza':  ['lechoza']
+};
+
+// Dado el nombre plano de un producto de Inventario y su categoría, devuelve la lista
+// de {grupo, key} de la matriz de Ajustes en los que ese producto participa.
+function getKeysParaProductoInventario(nombre, categoria) {
+  if (categoria === 'tuberculo') {
+    const k = detectarCarbKey(nombre);
+    return k ? [{ grupo: 'carbohidratos', key: k }] : [];
+  }
+  if (categoria === 'proteina') {
+    const k = detectarProtKey(nombre);
+    return k ? [{ grupo: 'proteinas', key: k }] : [];
+  }
+  if (categoria === 'vegetal') {
+    return (VEG_PRODUCTO_A_KEYS[nombre] || []).map(k => ({ grupo: 'vegetales', key: k }));
+  }
+  if (categoria === 'fruta') {
+    return (FRUTA_PRODUCTO_A_KEYS[nombre] || []).map(k => ({ grupo: 'frutas', key: k }));
+  }
+  return [];
+}
+
 // Mapeo: qué key de catálogo corresponde a cada nombre exacto del PLAN
 function detectarCarbKey(nombre) {
   const n = nombre.toLowerCase();
@@ -2394,6 +2443,37 @@ function getValorOriginal(grupo, key, col) {
   return null;
 }
 
+// Suma, a lo largo de los 7 días del PLAN, cuántos gramos le corresponden a una
+// combinación grupo+key: una vez con el valor ORIGINAL del plan, y otra vez aplicando
+// los overrides de la matriz de Ajustes (si existen). La razón entre ambos totales es
+// el "factor de consumo" que usa Inventario para que el stock estimado respete lo que
+// se ajustó en ⚙️ Ajustes, en vez de quedarse pegado al gramaje fijo original.
+function sumarPlanSemanal(grupo, key) {
+  const ov = getOverrides();
+  let original = 0, conOverride = 0;
+  DIAS_ES.forEach(diaKey => {
+    const plan = PLAN[diaKey];
+    if (!plan) return;
+    plan.comidas.forEach(c => {
+      let campo = null, detKey = null, tipo = c.tipo;
+      if (grupo === 'carbohidratos' && c.carbohidrato) { campo = c.carbohidrato; detKey = detectarCarbKey(c.carbohidrato.nombre); }
+      else if (grupo === 'proteinas' && c.proteina) { campo = c.proteina; detKey = detectarProtKey(c.proteina.nombre); }
+      else if (grupo === 'vegetales' && c.vegetal) { campo = c.vegetal; detKey = detectarVegKey(c.vegetal.nombre); }
+      else if (grupo === 'frutas' && c.fruta) {
+        campo = c.fruta; detKey = detectarFrutaKey(c.fruta.nombre);
+        tipo = c.hora.includes('10:00') ? 'merienda_am' : 'merienda_pm';
+      }
+      if (!campo || detKey !== key) return;
+      const origVal = parseFloat(String(campo.gramos).match(/[\d.]+/)?.[0] || '0');
+      original += origVal;
+      const ovVal = ov[grupo]?.[key]?.[tipo];
+      const overVal = ovVal ? parseFloat(String(ovVal).match(/[\d.]+/)?.[0] || '0') : origVal;
+      conOverride += overVal;
+    });
+  });
+  return { original, conOverride };
+}
+
 function renderMatriz(containerId, catalogo, grupo, columnas) {
   const ov = getOverrides();
   const grupoData = ov[grupo] || {};
@@ -2456,6 +2536,7 @@ function guardarConfig() {
   actualizarHeaderMetas();
   initCocinarManana(window._diaKey);
   renderCompras(); // sincronizar vista diaria de compras también
+  renderInventario(); // el consumo estimado de stock depende de estos overrides
 }
 
 function resetConfig() {
@@ -2466,6 +2547,7 @@ function resetConfig() {
   actualizarHeaderMetas();
   initCocinarManana(window._diaKey);
   renderCompras();
+  renderInventario();
 }
 
 function cerrarConfig() {
@@ -2489,8 +2571,37 @@ function saveExcepciones(arr) {
   localStorage.setItem('plan_excepciones', JSON.stringify(arr));
 }
 
+let _excepcionEditandoId = null;
+
 function toggleFormExcepcion() {
-  document.getElementById('excepcion-form').classList.toggle('open');
+  const form = document.getElementById('excepcion-form');
+  const abriendo = !form.classList.contains('open');
+  form.classList.toggle('open');
+  if (abriendo) {
+    // Abrir para AGREGAR (no editar) — limpiar cualquier edición pendiente y el formulario
+    _excepcionEditandoId = null;
+    document.getElementById('exc-fecha').value = '';
+    document.getElementById('exc-comida').value = 'desayuno';
+    document.getElementById('exc-tipo').value = 'proteina';
+    document.getElementById('exc-alimento').value = '';
+    document.getElementById('exc-cantidad').value = '';
+    document.getElementById('exc-nota').value = '';
+  } else {
+    _excepcionEditandoId = null;
+  }
+}
+
+function editarExcepcion(id) {
+  const e = getExcepciones().find(x => x.id === id);
+  if (!e) return;
+  _excepcionEditandoId = id;
+  document.getElementById('exc-fecha').value = e.fecha;
+  document.getElementById('exc-comida').value = e.comida;
+  document.getElementById('exc-tipo').value = e.tipo;
+  document.getElementById('exc-alimento').value = e.alimento;
+  document.getElementById('exc-cantidad').value = e.cantidad;
+  document.getElementById('exc-nota').value = e.nota || '';
+  document.getElementById('excepcion-form').classList.add('open');
 }
 
 function guardarExcepcion() {
@@ -2507,11 +2618,14 @@ function guardarExcepcion() {
   }
 
   const excepciones = getExcepciones();
-  excepciones.push({
-    id: 'EXC' + Date.now(),
-    fecha, comida, tipo, alimento, cantidad, nota
-  });
+  if (_excepcionEditandoId) {
+    const idx = excepciones.findIndex(e => e.id === _excepcionEditandoId);
+    if (idx >= 0) excepciones[idx] = { id: _excepcionEditandoId, fecha, comida, tipo, alimento, cantidad, nota };
+  } else {
+    excepciones.push({ id: 'EXC' + Date.now(), fecha, comida, tipo, alimento, cantidad, nota });
+  }
   saveExcepciones(excepciones);
+  _excepcionEditandoId = null;
 
   // Limpiar formulario
   document.getElementById('exc-fecha').value = '';
@@ -2522,14 +2636,20 @@ function guardarExcepcion() {
 
   renderListaExcepciones();
   renderComidas(window._diaKey); // por si la excepción es de hoy
+  renderInventario(); // el consumo de hoy puede cambiar si la excepción es de hoy
 }
 
 function borrarExcepcion(id) {
   let excepciones = getExcepciones();
   excepciones = excepciones.filter(e => e.id !== id);
   saveExcepciones(excepciones);
+  if (_excepcionEditandoId === id) {
+    _excepcionEditandoId = null;
+    document.getElementById('excepcion-form').classList.remove('open');
+  }
   renderListaExcepciones();
   renderComidas(window._diaKey);
+  renderInventario();
 }
 
 function renderListaExcepciones() {
@@ -2550,7 +2670,8 @@ function renderListaExcepciones() {
         <div class="excepcion-detalle">${colLabel[e.tipo]}: ${e.alimento} — ${e.cantidad}</div>
         ${e.nota ? `<div class="excepcion-nota">📌 ${e.nota}</div>` : ''}
       </div>
-      <button class="excepcion-borrar" onclick="borrarExcepcion('${e.id}')">✕</button>
+      <button class="excepcion-borrar" style="margin-right:4px;" onclick="editarExcepcion('${e.id}')" title="Editar">✏️</button>
+      <button class="excepcion-borrar" onclick="borrarExcepcion('${e.id}')" title="Borrar">✕</button>
     </div>`;
   }).join('');
 }
@@ -2602,6 +2723,12 @@ function parsearCantidadInv(str) {
 // Catálogo de productos derivado de COMPRAS_SEMANALES — consumo semanal estimado por producto.
 // El ítem "Manzanas / Peras / Duraznos" del dataset original es UNA fila que en realidad describe
 // 3 productos distintos con cantidad cada uno — se separa aquí para no subestimar el consumo real.
+//
+// El consumo semanal de cada producto se ESCALA según lo que haya cambiado en la matriz de
+// ⚙️ Ajustes (ver sumarPlanSemanal): si el override total de una key es, por ejemplo, el doble
+// del valor original del plan, el consumo estimado de ese producto también se duplica. Así el
+// stock calculado en Inventario respeta lo que ya corregiste en Ajustes en vez de seguir usando
+// el gramaje fijo original del plan para siempre.
 function getCatalogoInventario() {
   const catalogo = [];
   COMPRAS_SEMANALES.forEach((grupo, gi) => {
@@ -2609,15 +2736,16 @@ function getCatalogoInventario() {
     grupo.items.forEach(item => {
       if (item.nombre === 'Manzanas / Peras / Duraznos') {
         ['Manzana', 'Pera', 'Durazno'].forEach(n => {
-          catalogo.push({ nombre: n, categoria, consumoSemanal: parsearCantidadInv('3-4 unidades') });
+          catalogo.push(construirEntradaCatalogo(n, categoria, '3-4 unidades'));
         });
       } else {
-        catalogo.push({ nombre: item.nombre, categoria, consumoSemanal: parsearCantidadInv(item.cantidad) });
+        catalogo.push(construirEntradaCatalogo(item.nombre, categoria, item.cantidad));
       }
     });
   });
 
-  // Fusionar productos personalizados (sin duplicar)
+  // Fusionar productos personalizados (sin duplicar) — no participan en la matriz de
+  // Ajustes (son productos que el usuario agregó fuera del plan), así que no llevan factor.
   const nombresBase = new Set(catalogo.map(p => p.nombre.toLowerCase()));
   const personalizados = JSON.parse(localStorage.getItem('productos_personalizados') || '[]');
   personalizados.forEach(p => {
@@ -2630,12 +2758,34 @@ function getCatalogoInventario() {
           ? { valor: p.consumoSemanalG, unidad: 'g' }
           : null,
         diasStockManual: p.diasStockManual || null,
-        esPersonalizado: true
+        esPersonalizado: true,
+        keysGrupo: []
       });
     }
   });
 
   return catalogo;
+}
+
+function construirEntradaCatalogo(nombre, categoria, cantidadTexto) {
+  const consumoBase = parsearCantidadInv(cantidadTexto);
+  const keysGrupo = getKeysParaProductoInventario(nombre, categoria);
+
+  let consumoSemanal = consumoBase;
+  if (keysGrupo.length > 0 && consumoBase.valor > 0) {
+    let sumOrig = 0, sumOver = 0;
+    keysGrupo.forEach(({ grupo: g, key }) => {
+      const { original, conOverride } = sumarPlanSemanal(g, key);
+      sumOrig += original;
+      sumOver += conOverride;
+    });
+    if (sumOrig > 0) {
+      const factor = sumOver / sumOrig;
+      consumoSemanal = { valor: consumoBase.valor * factor, unidad: consumoBase.unidad };
+    }
+  }
+
+  return { nombre, categoria, consumoSemanal, keysGrupo };
 }
 
 function getComprasInventario() {
@@ -2931,10 +3081,90 @@ async function guardarLoteInventario() {
   renderComprasRegistro();
 }
 
+let _compraEditandoId = null;
+let _compraEditState = { cantidadKg: '', mermaG: '', precio: '', lugar: '' };
+
 function borrarCompraInventario(id) {
   let compras = getComprasInventario();
   compras = compras.filter(c => c.id !== id);
   saveComprasInventario(compras);
+  if (_compraEditandoId === id) _compraEditandoId = null;
+  renderInventario();
+  renderComprasRegistro();
+}
+
+function editarCompra(id) {
+  const c = getComprasInventario().find(x => x.id === id);
+  if (!c) return;
+  _compraEditandoId = id;
+  _compraEditState = {
+    cantidadKg: String(c.cantidadKg ?? (c.cantidadBruta ? c.cantidadBruta / 1000 : '')),
+    mermaG: String(c.mermaG || ''),
+    precio: String(c.precioKg ?? ''),
+    lugar: c.lugar || ''
+  };
+  renderInvHistorial();
+}
+
+function cancelarEdicionCompra() {
+  _compraEditandoId = null;
+  renderInvHistorial();
+}
+
+function actualizarCompraEditCampo(campo, valor) {
+  _compraEditState[campo] = valor;
+  actualizarCompraEditPreview();
+}
+
+function actualizarCompraEditPreview() {
+  const el = document.getElementById('compra-edit-preview');
+  if (!el) return;
+  const kg = parseFloat(_compraEditState.cantidadKg) || 0;
+  const mermaG = parseFloat(_compraEditState.mermaG) || 0;
+  const precio = parseFloat(_compraEditState.precio) || 0;
+  const netaG = Math.max(0, kg * 1000 - mermaG);
+  const costoTotal = kg * precio;
+  el.innerHTML = kg > 0
+    ? `Neto: <strong>${(netaG / 1000).toFixed(2)} kg</strong> · Costo: <strong>${costoTotal.toFixed(2)}</strong>`
+    : 'Completa cantidad y precio para ver el nuevo cálculo';
+}
+
+// Recalcula la compra editada con la MISMA fórmula que "Registrar compras" (kg brutos +
+// merma en gramos → neto), preservando moneda original y tasa histórica de esa compra
+// (para no distorsionar el gasto ya contabilizado en dólares).
+function guardarEdicionCompra(id) {
+  const compras = getComprasInventario();
+  const idx = compras.findIndex(c => c.id === id);
+  if (idx < 0) return;
+
+  const kg = parseFloat(_compraEditState.cantidadKg) || 0;
+  const mermaG = parseFloat(_compraEditState.mermaG) || 0;
+  const precio = parseFloat(_compraEditState.precio);
+  if (kg <= 0 || isNaN(precio) || precio < 0) {
+    alert('Indica al menos la cantidad (kg) y el precio por kg.');
+    return;
+  }
+
+  const totalG = kg * 1000;
+  const netaG = Math.max(0, totalG - mermaG);
+  const mermaPct = totalG > 0 ? Number((mermaG / totalG * 100).toFixed(1)) : 0;
+  const costoTotal = kg * precio;
+  const costoKgNeto = netaG > 0 ? Number((costoTotal / (netaG / 1000)).toFixed(2)) : 0;
+
+  const c = compras[idx];
+  const costoUSD = c.monedaOriginal === 'USD' ? costoTotal : costoTotal / c.tasaAlComprar;
+
+  compras[idx] = {
+    ...c,
+    cantidadKg: kg, mermaG, mermaPct,
+    cantidadBruta: totalG, cantidadNeta: netaG,
+    precioKg: precio, costoTotal, costoKgNeto,
+    costoUSD,
+    lugar: _compraEditState.lugar.trim()
+  };
+  saveComprasInventario(compras);
+
+  _compraEditandoId = null;
   renderInventario();
   renderComprasRegistro();
 }
@@ -2992,6 +3222,7 @@ function calcularStockProducto(producto, catalogo) {
       stockActual += Math.max(0, c.cantidadNeta - consumido);
     });
     stockActual = aplicarAjustes(stockActual, dailyAvg);
+    stockActual = aplicarExcepcionesHoy(stockActual, prod.keysGrupo);
     const diasRestantes = dailyAvg > 0 ? stockActual / dailyAvg : Infinity;
     const fechaAgotamiento = new Date(hoy.getTime() + diasRestantes * 86400000);
     return {
@@ -3017,6 +3248,68 @@ function calcularStockProducto(producto, catalogo) {
     tieneCompras: compras.length > 0,
     sinConsumoDefinido: true // flag para mostrar diferente en la UI
   };
+}
+
+// ── EXCEPCIONES PUNTUALES: efecto de un solo día sobre el stock estimado ──
+// Una excepción es un cambio de UN SOLO DÍA (ej. "hoy en el almuerzo cambié pollo por
+// sardinas"), así que no debe alterar el promedio semanal de consumo (eso ya lo hace
+// la matriz de Ajustes) — solo debe afectar la estimación de HOY: al producto
+// reemplazado se le "devuelve" lo que hoy no se consumió, y al producto sustituto
+// (si también se rastrea en Inventario) se le resta lo que sí se consumió de más.
+function tipoExcepcionAGrupo(tipo) {
+  if (tipo === 'proteina') return 'proteinas';
+  if (tipo === 'carbohidrato') return 'carbohidratos';
+  if (tipo === 'vegetal') return 'vegetales';
+  return null;
+}
+
+function getExcepcionesHoy() {
+  const hoyISO = new Date().toISOString().slice(0, 10);
+  return getExcepciones().filter(e => e.fecha === hoyISO);
+}
+
+// Gramos que el PLAN (con overrides de Ajustes ya aplicados) le asigna HOY a una
+// key en una comida concreta, o null si esa key no corresponde a la comida de hoy.
+function getGramosHoyPara(grupo, key, comidaTipo) {
+  const plan = PLAN[window._diaKey];
+  if (!plan) return null;
+  const c = plan.comidas.find(cc => cc.tipo === comidaTipo);
+  if (!c) return null;
+  let campo = null, detKey = null;
+  if (grupo === 'carbohidratos' && c.carbohidrato) { campo = c.carbohidrato; detKey = detectarCarbKey(c.carbohidrato.nombre); }
+  if (grupo === 'proteinas' && c.proteina) { campo = c.proteina; detKey = detectarProtKey(c.proteina.nombre); }
+  if (grupo === 'vegetales' && c.vegetal) { campo = c.vegetal; detKey = detectarVegKey(c.vegetal.nombre); }
+  if (!campo || detKey !== key) return null;
+  const ov = getOverrides();
+  const ovVal = ov[grupo]?.[key]?.[comidaTipo];
+  const valorStr = ovVal ?? campo.gramos;
+  const match = String(valorStr).match(/[\d.]+/);
+  return match ? parseFloat(match[0]) : null;
+}
+
+function aplicarExcepcionesHoy(stockActual, keysGrupo) {
+  if (!keysGrupo || keysGrupo.length === 0) return stockActual;
+  const excepciones = getExcepcionesHoy();
+  if (excepciones.length === 0) return stockActual;
+  let ajuste = 0;
+  excepciones.forEach(e => {
+    const grupoExc = tipoExcepcionAGrupo(e.tipo);
+    if (!grupoExc) return;
+    const kg = keysGrupo.find(k => k.grupo === grupoExc);
+    if (!kg) return;
+    // ¿Hoy este producto era el que se iba a usar en esa comida y la excepción lo reemplazó?
+    const gramosOriginales = getGramosHoyPara(grupoExc, kg.key, e.comida);
+    if (gramosOriginales !== null) ajuste += gramosOriginales; // no se consumió → se devuelve
+    // ¿El alimento sustituto de la excepción ES este mismo producto?
+    const detSustituto = grupoExc === 'proteinas' ? detectarProtKey(e.alimento)
+      : grupoExc === 'carbohidratos' ? detectarCarbKey(e.alimento)
+      : detectarVegKey(e.alimento);
+    if (detSustituto === kg.key) {
+      const gramosSustituto = parseFloat(String(e.cantidad).match(/[\d.]+/)?.[0] || '0');
+      ajuste -= gramosSustituto; // sí se consumió de más hoy
+    }
+  });
+  return Math.max(0, stockActual + ajuste);
 }
 
 // Vista de Inventario: solo stock + alertas + posibilidad de corregirlo a mano.
@@ -3124,11 +3417,22 @@ function getAjustesProducto(producto) {
 }
 
 let _ajusteProductoAbierto = null;
+let _ajusteEditandoId = null;
 let _ajusteState = { cantidadKg: '', mermaG: '', nota: '' };
 
 function toggleAjusteForm(producto) {
   _ajusteProductoAbierto = _ajusteProductoAbierto === producto ? null : producto;
+  _ajusteEditandoId = null;
   _ajusteState = { cantidadKg: '', mermaG: '', nota: '' };
+  renderInventario();
+}
+
+function editarAjuste(id) {
+  const a = getAjustesInventario().find(x => x.id === id);
+  if (!a) return;
+  _ajusteProductoAbierto = a.producto;
+  _ajusteEditandoId = id;
+  _ajusteState = { cantidadKg: String(a.cantidadKg), mermaG: String(a.mermaG || ''), nota: a.nota || '' };
   renderInventario();
 }
 
@@ -3158,18 +3462,32 @@ function guardarAjuste(signo) {
   if (!kg || netoG <= 0) { alert('Indica al menos la cantidad (kg). La merma es opcional.'); return; }
 
   const ajustes = getAjustesInventario();
-  ajustes.push({
-    id: 'AJ' + Date.now() + Math.random().toString(36).slice(2, 6),
-    producto,
-    fecha: new Date().toISOString().slice(0, 10),
-    cantidadKg: kg, mermaG,
-    netoG: Math.round(netoG),
-    signo, deltaG: signo * Math.round(netoG),
-    nota: _ajusteState.nota.trim()
-  });
+  if (_ajusteEditandoId) {
+    const idx = ajustes.findIndex(a => a.id === _ajusteEditandoId);
+    if (idx >= 0) {
+      ajustes[idx] = {
+        ...ajustes[idx],
+        cantidadKg: kg, mermaG,
+        netoG: Math.round(netoG),
+        signo, deltaG: signo * Math.round(netoG),
+        nota: _ajusteState.nota.trim()
+      };
+    }
+  } else {
+    ajustes.push({
+      id: 'AJ' + Date.now() + Math.random().toString(36).slice(2, 6),
+      producto,
+      fecha: new Date().toISOString().slice(0, 10),
+      cantidadKg: kg, mermaG,
+      netoG: Math.round(netoG),
+      signo, deltaG: signo * Math.round(netoG),
+      nota: _ajusteState.nota.trim()
+    });
+  }
   saveAjustesInventario(ajustes);
 
   _ajusteProductoAbierto = null;
+  _ajusteEditandoId = null;
   _ajusteState = { cantidadKg: '', mermaG: '', nota: '' };
   renderInventario();
 }
@@ -3178,15 +3496,21 @@ function borrarAjuste(id) {
   let ajustes = getAjustesInventario();
   ajustes = ajustes.filter(a => a.id !== id);
   saveAjustesInventario(ajustes);
+  if (_ajusteEditandoId === id) {
+    _ajusteEditandoId = null;
+    _ajusteProductoAbierto = null;
+  }
   renderInventario();
 }
 
 function construirAjusteFormHTML(producto) {
   const abierto = _ajusteProductoAbierto === producto;
   const productoEscapado = producto.replace(/'/g, "\\'");
+  const editando = abierto && _ajusteEditandoId;
   return `
     <button class="inv-stock-ajustar-btn" onclick="toggleAjusteForm('${productoEscapado}')">${abierto ? '✕ Cancelar ajuste' : '✏️ Ajustar stock'}</button>
     <div class="ajuste-form ${abierto ? 'open' : ''}">
+      ${editando ? '<div style="font-size:10.5px;font-weight:700;color:var(--amber);margin-bottom:6px;">✏️ Editando ajuste existente</div>' : ''}
       <div class="ajuste-form-grid">
         <div>
           <label>Cantidad (kg)</label>
@@ -3228,7 +3552,8 @@ function renderInvAjustesHistorial() {
         <div class="inv-ajuste-meta">${fechaTxt}${a.mermaG ? ` · merma ${a.mermaG}g` : ''}${a.nota ? ' · ' + a.nota : ''}</div>
       </div>
       <div class="inv-ajuste-delta ${claseDelta}">${signoTxt}${Math.abs(a.deltaG)} g</div>
-      <button class="inv-ajuste-borrar" onclick="borrarAjuste('${a.id}')">✕</button>
+      <button class="inv-ajuste-borrar" style="margin-right:2px;" onclick="editarAjuste('${a.id}')" title="Editar">✏️</button>
+      <button class="inv-ajuste-borrar" onclick="borrarAjuste('${a.id}')" title="Borrar">✕</button>
     </div>`;
   }).join('');
 }
@@ -3330,16 +3655,47 @@ function renderInvHistorial() {
     const cantidadTxt = c.mermaPct
       ? `${c.cantidadBruta} ${c.unidad} (merma ${c.mermaPct}% → ${Math.round(c.cantidadNeta)} ${c.unidad} netos)`
       : `${c.cantidadBruta ?? c.cantidad} ${c.unidad}`;
-    return `<div class="inv-historial-item">
-      <div class="inv-historial-info">
-        <div class="inv-historial-nombre">${c.producto} — ${cantidadTxt}</div>
-        <div class="inv-historial-meta">${fechaTxt}${c.lugar ? ' · ' + c.lugar : ''}</div>
+    const editando = _compraEditandoId === c.id;
+    return `<div>
+      <div class="inv-historial-item">
+        <div class="inv-historial-info">
+          <div class="inv-historial-nombre">${c.producto} — ${cantidadTxt}</div>
+          <div class="inv-historial-meta">${fechaTxt}${c.lugar ? ' · ' + c.lugar : ''}</div>
+        </div>
+        <div class="inv-historial-costo">${formatoDual(c.costoUSD)}</div>
+        <button class="inv-historial-borrar" style="margin-right:2px;" onclick="editarCompra('${c.id}')" title="Editar">✏️</button>
+        <button class="inv-historial-borrar" onclick="borrarCompraInventario('${c.id}')" title="Borrar">✕</button>
+        ${c.facturaBase64 ? `<button onclick="verFactura('${c.id}')" style="background:none;border:none;font-size:16px;cursor:pointer;padding:0 2px;" title="Ver factura">📎</button>` : ''}
       </div>
-      <div class="inv-historial-costo">${formatoDual(c.costoUSD)}</div>
-      <button class="inv-historial-borrar" onclick="borrarCompraInventario('${c.id}')">✕</button>
-      ${c.facturaBase64 ? `<button onclick="verFactura('${c.id}')" style="background:none;border:none;font-size:16px;cursor:pointer;padding:0 2px;" title="Ver factura">📎</button>` : ''}
+      ${editando ? construirEdicionCompraHTML(c) : ''}
     </div>`;
   }).join('');
+}
+
+function construirEdicionCompraHTML(c) {
+  const simbolo = c.monedaOriginal === 'USD' ? '$' : 'Bs';
+  return `<div class="ajuste-form open" style="margin:0 16px 10px;">
+    <div class="ajuste-form-grid" style="grid-template-columns:1fr 1fr 1fr;">
+      <div>
+        <label>Cantidad (kg)</label>
+        <input type="number" step="0.1" min="0" value="${_compraEditState.cantidadKg}" oninput="actualizarCompraEditCampo('cantidadKg', this.value)">
+      </div>
+      <div>
+        <label>Merma (g)</label>
+        <input type="number" step="1" min="0" value="${_compraEditState.mermaG}" oninput="actualizarCompraEditCampo('mermaG', this.value)">
+      </div>
+      <div>
+        <label>Precio (${simbolo}/kg)</label>
+        <input type="number" step="0.01" min="0" value="${_compraEditState.precio}" oninput="actualizarCompraEditCampo('precio', this.value)">
+      </div>
+    </div>
+    <input type="text" class="excepcion-form-input" placeholder="Lugar de compra" style="margin-bottom:8px;" value="${_compraEditState.lugar}" oninput="actualizarCompraEditCampo('lugar', this.value)">
+    <div class="ajuste-neto-preview" id="compra-edit-preview">Ajusta los valores para ver el nuevo cálculo</div>
+    <div class="excepcion-form-actions">
+      <button class="excepcion-cancelar" onclick="cancelarEdicionCompra()">Cancelar</button>
+      <button class="excepcion-guardar" onclick="guardarEdicionCompra('${c.id}')">Guardar cambios</button>
+    </div>
+  </div>`;
 }
 
 // ═══════════════════════════════════════════════
@@ -3364,10 +3720,31 @@ function saveProductosPersonalizados(arr) {
 // recursión infinita (y por eso el selector de producto no cargaba nada). Se eliminó
 // ese bloque duplicado; con una sola definición el selector vuelve a poblarse bien.
 
+let _productoPersonalizadoEditandoId = null;
+
 function toggleFormProductoPersonalizado() {
   const form = document.getElementById('form-producto-personalizado');
+  const abriendo = !form.classList.contains('open');
   form.classList.toggle('open');
-  if (form.classList.contains('open')) renderListaProductosPersonalizados();
+  if (abriendo) {
+    _productoPersonalizadoEditandoId = null;
+    document.getElementById('pp-nombre').value = '';
+    document.getElementById('pp-categoria').value = 'despensa';
+    document.getElementById('pp-consumo').value = '';
+    renderListaProductosPersonalizados();
+  } else {
+    _productoPersonalizadoEditandoId = null;
+  }
+}
+
+function editarProductoPersonalizado(id) {
+  const p = getProductosPersonalizados().find(x => x.id === id);
+  if (!p) return;
+  _productoPersonalizadoEditandoId = id;
+  document.getElementById('pp-nombre').value = p.nombre;
+  document.getElementById('pp-categoria').value = p.categoria;
+  document.getElementById('pp-consumo').value = p.consumoSemanalG;
+  document.getElementById('form-producto-personalizado').classList.add('open');
 }
 
 function renderListaProductosPersonalizados() {
@@ -3381,7 +3758,10 @@ function renderListaProductosPersonalizados() {
         <div class="pp-item-nombre">${p.nombre}</div>
         <div class="pp-item-meta">${INV_CATEGORIA_LABEL[p.categoria] || p.categoria} · ${p.consumoSemanalG}g/semana</div>
       </div>
-      <button class="pp-item-borrar" onclick="borrarProductoPersonalizado('${p.id}')">✕</button>
+      <div style="display:flex;gap:4px;">
+        <button class="pp-item-borrar" onclick="editarProductoPersonalizado('${p.id}')" title="Editar">✏️</button>
+        <button class="pp-item-borrar" onclick="borrarProductoPersonalizado('${p.id}')" title="Borrar">✕</button>
+      </div>
     </div>`).join('');
 }
 
@@ -3394,23 +3774,46 @@ function guardarProductoPersonalizado() {
   if (!consumo || consumo <= 0) { alert('Indica el consumo semanal en gramos.'); return; }
 
   const prods = getProductosPersonalizados();
-  if (prods.find(p => p.nombre.toLowerCase() === nombre.toLowerCase())) {
-    alert('Ya existe un producto con ese nombre.'); return;
-  }
 
-  prods.push({ id: 'PP' + Date.now(), nombre, categoria, consumoSemanalG: consumo });
-  saveProductosPersonalizados(prods);
+  if (_productoPersonalizadoEditandoId) {
+    const idx = prods.findIndex(p => p.id === _productoPersonalizadoEditandoId);
+    if (idx < 0) return;
+    const duplicado = prods.find(p => p.id !== _productoPersonalizadoEditandoId && p.nombre.toLowerCase() === nombre.toLowerCase());
+    if (duplicado) { alert('Ya existe otro producto con ese nombre.'); return; }
+    const nombreAnterior = prods[idx].nombre;
+    prods[idx] = { ...prods[idx], nombre, categoria, consumoSemanalG: consumo };
+    saveProductosPersonalizados(prods);
+    // Si cambió el nombre, renombrar también su historial de compras y ajustes — si no,
+    // esos registros quedarían huérfanos apuntando a un nombre que ya no existe.
+    if (nombreAnterior !== nombre) {
+      saveComprasInventario(getComprasInventario().map(c => c.producto === nombreAnterior ? { ...c, producto: nombre } : c));
+      saveAjustesInventario(getAjustesInventario().map(a => a.producto === nombreAnterior ? { ...a, producto: nombre } : a));
+    }
+    _productoPersonalizadoEditandoId = null;
+  } else {
+    if (prods.find(p => p.nombre.toLowerCase() === nombre.toLowerCase())) {
+      alert('Ya existe un producto con ese nombre.'); return;
+    }
+    prods.push({ id: 'PP' + Date.now(), nombre, categoria, consumoSemanalG: consumo });
+    saveProductosPersonalizados(prods);
+  }
 
   document.getElementById('pp-nombre').value = '';
   document.getElementById('pp-consumo').value = '';
   renderListaProductosPersonalizados();
   renderFilasInv(); // refrescar el selector de productos en el formulario de compras
+  renderInventario();
+  renderComprasRegistro();
 }
 
 function borrarProductoPersonalizado(id) {
   let prods = getProductosPersonalizados();
   prods = prods.filter(p => p.id !== id);
   saveProductosPersonalizados(prods);
+  if (_productoPersonalizadoEditandoId === id) {
+    _productoPersonalizadoEditandoId = null;
+    document.getElementById('form-producto-personalizado').classList.remove('open');
+  }
   renderListaProductosPersonalizados();
   renderFilasInv();
 }
