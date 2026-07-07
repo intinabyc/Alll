@@ -2381,12 +2381,20 @@ function detectarProtKey(nombre) {
 function getPorcionesSemanaPlan(protKey) {
   if (!protKey) return 0;
   let conteo = 0;
-  DIAS_ES.forEach(diaKey => {
-    const plan = PLAN[diaKey];
-    if (!plan) return;
-    plan.comidas.forEach(c => {
-      if (c.proteina && detectarProtKey(c.proteina.nombre) === protKey) conteo++;
-    });
+  DIAS_ES.forEach(diaKey => conteo += getPorcionesDiaPlan(protKey, diaKey));
+  return conteo;
+}
+
+// Cuenta cuántas comidas de UN día específico de la semana (lunes, martes...) usan
+// esta proteína — es la pieza que faltaba para dejar de "aplanar" el consumo semanal
+// en un promedio diario fijo. Ver getConsumoDiaProducto() / sumarConsumoRealDesde().
+function getPorcionesDiaPlan(protKey, diaKey) {
+  if (!protKey) return 0;
+  const plan = PLAN[diaKey];
+  if (!plan) return 0;
+  let conteo = 0;
+  plan.comidas.forEach(c => {
+    if (c.proteina && detectarProtKey(c.proteina.nombre) === protKey) conteo++;
   });
   return conteo;
 }
@@ -2490,6 +2498,95 @@ function sumarPlanSemanal(grupo, key) {
     });
   });
   return { original, conOverride };
+}
+
+// Gramos reales que el PLAN (con overrides de Ajustes ya aplicados) asigna a una
+// key en UN día específico de la semana (lunes, martes...) — suma todas las comidas
+// de ese día que usen esa key (por si aparece más de una vez el mismo día). Esta es
+// la pieza que reemplaza el promedio semanal/7 para tubérculos/vegetales/frutas: en
+// vez de asumir que cada día gasta lo mismo, se calcula el gramaje real de CADA día.
+function getGramosDiaParaKey(grupo, key, diaKey) {
+  const plan = PLAN[diaKey];
+  if (!plan) return 0;
+  const ov = getOverrides();
+  let total = 0;
+  plan.comidas.forEach(c => {
+    let campo = null, detKey = null, tipo = c.tipo;
+    if (grupo === 'carbohidratos' && c.carbohidrato) { campo = c.carbohidrato; detKey = detectarCarbKey(c.carbohidrato.nombre); }
+    else if (grupo === 'vegetales' && c.vegetal) { campo = c.vegetal; detKey = detectarVegKey(c.vegetal.nombre); }
+    else if (grupo === 'frutas' && c.fruta) {
+      campo = c.fruta; detKey = detectarFrutaKey(c.fruta.nombre);
+      tipo = c.hora.includes('10:00') ? 'merienda_am' : 'merienda_pm';
+    }
+    if (!campo || detKey !== key) return;
+    const ovVal = ov[grupo]?.[key]?.[tipo];
+    const valorStr = ovVal ?? campo.gramos;
+    const match = String(valorStr).match(/[\d.]+/);
+    if (match) total += parseFloat(match[0]);
+  });
+  return total;
+}
+
+// Consumo real de un producto de Inventario en UN día específico de la semana.
+// - Proteínas: porciones (comidas) de ese día que usan esa proteína.
+// - Tubérculo/Vegetal/Fruta con mapeo al PLAN (keysGrupo): gramos reales de ese día,
+//   sumando todas sus keys (algunos productos agrupan varias, ej. chayota+vainitas).
+// - Producto personalizado sin mapeo (keysGrupo vacío): no hay patrón de día conocido,
+//   se devuelve null para que quien llame use el promedio plano como único recurso.
+function getConsumoDiaProducto(prod, diaKey) {
+  if (prod.categoria === 'proteina') {
+    return getPorcionesDiaPlan(prod.protKey, diaKey);
+  }
+  if (!prod.keysGrupo || prod.keysGrupo.length === 0) return null;
+  let total = 0;
+  prod.keysGrupo.forEach(({ grupo, key }) => {
+    total += getGramosDiaParaKey(grupo, key, diaKey);
+  });
+  return total;
+}
+
+// Suma el consumo real (día por día, respetando el día de la semana exacto) desde
+// el día siguiente a `fechaInicio` hasta completar `diasTranscurridos` días — mismo
+// conteo de días que antes hacía `diasTranscurridos * dailyAvg`, pero ya no asume que
+// todos los días gastan lo mismo. `getConsumoDiaFn(diaKey)` debe devolver el consumo
+// de un día de la semana dado; si un producto no tiene patrón de día (personalizado
+// sin mapeo al PLAN), `getConsumoDiaFn` puede devolver siempre el mismo promedio.
+function sumarConsumoRealDesde(fechaInicio, diasTranscurridos, getConsumoDiaFn) {
+  let total = 0;
+  for (let i = 1; i <= diasTranscurridos; i++) {
+    const fecha = new Date(fechaInicio.getTime() + i * 86400000);
+    const diaKey = DIAS_ES[fecha.getDay()];
+    total += getConsumoDiaFn(diaKey) || 0;
+  }
+  return total;
+}
+
+// Proyecta hacia adelante, día por día y respetando el patrón real de la semana,
+// cuántos días faltan para agotar `stockInicial`. Reemplaza la simple división
+// stock/dailyAvg, que asumía consumo idéntico todos los días. Devuelve días
+// fraccionarios (ej. 2.3) para que el badge "≤1 día" siga siendo preciso incluso si
+// el producto solo se consume ciertos días de la semana.
+function proyectarAgotamiento(stockInicial, getConsumoDiaFn, hoy) {
+  if (stockInicial <= 0) return { diasRestantes: 0, fechaAgotamiento: new Date(hoy) };
+  let stock = stockInicial;
+  let dias = 0;
+  const MAX_DIAS = 3650; // salvaguarda: nunca debería iterar años si el consumo semanal es > 0
+  while (stock > 0 && dias < MAX_DIAS) {
+    const fecha = new Date(hoy.getTime() + Math.floor(dias) * 86400000);
+    const diaKey = DIAS_ES[fecha.getDay()];
+    const consumoDia = getConsumoDiaFn(diaKey) || 0;
+    if (consumoDia <= 0) { dias += 1; continue; }
+    if (consumoDia >= stock) {
+      dias += stock / consumoDia;
+      stock = 0;
+    } else {
+      stock -= consumoDia;
+      dias += 1;
+    }
+  }
+  if (dias >= MAX_DIAS) return { diasRestantes: Infinity, fechaAgotamiento: null };
+  const fechaAgotamiento = new Date(hoy.getTime() + dias * 86400000);
+  return { diasRestantes: dias, fechaAgotamiento };
 }
 
 function renderMatriz(containerId, catalogo, grupo, columnas) {
@@ -3261,17 +3358,18 @@ function calcularStockProducto(producto, catalogo) {
   const hoy = new Date(); hoy.setHours(0,0,0,0);
 
   // Aplica los ajustes manuales sobre un stock ya calculado desde las compras. Los
-  // ajustes positivos (se sumó al stock) decaen igual que una compra desde su fecha;
-  // los negativos (se restó del stock: merma extra, porciones más grandes, daño, etc.)
-  // se descuentan de una vez, porque son una pérdida real que ya ocurrió y no
+  // ajustes positivos (se sumó al stock) decaen igual que una compra desde su fecha,
+  // día por día según el patrón real de la semana (getConsumoDiaFn); los negativos
+  // (se restó del stock: merma extra, porciones más grandes, daño, etc.) se
+  // descuentan de una vez, porque son una pérdida real que ya ocurrió y no
   // "se regenera" con el paso de los días.
-  function aplicarAjustes(stockBase, dailyAvg) {
+  function aplicarAjustes(stockBase, getConsumoDiaFn) {
     let stock = stockBase;
     ajustes.forEach(a => {
       if (a.deltaG >= 0) {
         const fechaAj = new Date(a.fecha + 'T00:00:00');
         const dias = Math.max(0, Math.floor((hoy - fechaAj) / 86400000));
-        const consumido = dias * dailyAvg;
+        const consumido = sumarConsumoRealDesde(fechaAj, dias, getConsumoDiaFn);
         stock += Math.max(0, a.deltaG - consumido);
       } else {
         stock -= Math.abs(a.deltaG);
@@ -3287,14 +3385,15 @@ function calcularStockProducto(producto, catalogo) {
   // (ver campo "¿Cuántas porciones sacaste de esto?" en el formulario de compra).
   if (prod.categoria === 'proteina') {
     const porcionesSemana = prod.porcionesSemana ?? getPorcionesSemanaPlan(prod.protKey);
-    const dailyAvg = porcionesSemana / 7; // porciones/día
+    const dailyAvg = porcionesSemana / 7; // solo referencial para el texto "~X/día"
+    const getConsumoDia = (diaKey) => getPorcionesDiaPlan(prod.protKey, diaKey);
 
     let stockActual = 0;
     compras.forEach(c => {
       const porcionesCompra = c.porciones || 0;
       const fechaCompra = new Date(c.fecha + 'T00:00:00');
       const diasTranscurridos = Math.max(0, Math.floor((hoy - fechaCompra) / 86400000));
-      const consumido = diasTranscurridos * dailyAvg;
+      const consumido = sumarConsumoRealDesde(fechaCompra, diasTranscurridos, getConsumoDia);
       stockActual += Math.max(0, porcionesCompra - consumido);
     });
 
@@ -3306,7 +3405,7 @@ function calcularStockProducto(producto, catalogo) {
       if (deltaPorciones > 0) {
         const fechaAj = new Date(a.fecha + 'T00:00:00');
         const dias = Math.max(0, Math.floor((hoy - fechaAj) / 86400000));
-        const consumido = dias * dailyAvg;
+        const consumido = sumarConsumoRealDesde(fechaAj, dias, getConsumoDia);
         stockConAjustes += Math.max(0, deltaPorciones - consumido);
       } else {
         stockConAjustes -= Math.abs(deltaPorciones);
@@ -3314,8 +3413,7 @@ function calcularStockProducto(producto, catalogo) {
     });
     stockConAjustes = Math.max(0, stockConAjustes);
 
-    const diasRestantes = dailyAvg > 0 ? stockConAjustes / dailyAvg : Infinity;
-    const fechaAgotamiento = new Date(hoy.getTime() + diasRestantes * 86400000);
+    const { diasRestantes, fechaAgotamiento } = proyectarAgotamiento(stockConAjustes, getConsumoDia, hoy);
     return {
       producto, categoria: prod.categoria,
       unidad: 'porciones',
@@ -3326,20 +3424,28 @@ function calcularStockProducto(producto, catalogo) {
     };
   }
 
-  // Si el producto tiene consumo semanal del plan → calcular días por consumo
+  // Si el producto tiene consumo semanal del plan → calcular días por consumo real,
+  // día por día, en vez de un promedio plano (ver getConsumoDiaProducto arriba).
   if (prod.consumoSemanal && prod.consumoSemanal.valor > 0) {
-    const dailyAvg = prod.consumoSemanal.valor / 7;
+    const dailyAvg = prod.consumoSemanal.valor / 7; // solo referencial para el texto "~X/día"
+    const tieneMapeoDia = prod.keysGrupo && prod.keysGrupo.length > 0;
+    // Si el producto no tiene mapeo al PLAN (ej. personalizado con consumo manual en
+    // gramos/semana), no hay patrón de día que calcular: se usa el promedio plano
+    // como único recurso disponible, igual que antes.
+    const getConsumoDia = tieneMapeoDia
+      ? (diaKey) => getConsumoDiaProducto(prod, diaKey)
+      : () => dailyAvg;
+
     let stockActual = 0;
     compras.forEach(c => {
       const fechaCompra = new Date(c.fecha + 'T00:00:00');
       const diasTranscurridos = Math.max(0, Math.floor((hoy - fechaCompra) / 86400000));
-      const consumido = diasTranscurridos * dailyAvg;
+      const consumido = sumarConsumoRealDesde(fechaCompra, diasTranscurridos, getConsumoDia);
       stockActual += Math.max(0, c.cantidadNeta - consumido);
     });
-    stockActual = aplicarAjustes(stockActual, dailyAvg);
+    stockActual = aplicarAjustes(stockActual, getConsumoDia);
     stockActual = aplicarExcepcionesHoy(stockActual, prod.keysGrupo);
-    const diasRestantes = dailyAvg > 0 ? stockActual / dailyAvg : Infinity;
-    const fechaAgotamiento = new Date(hoy.getTime() + diasRestantes * 86400000);
+    const { diasRestantes, fechaAgotamiento } = proyectarAgotamiento(stockActual, getConsumoDia, hoy);
     return {
       producto, categoria: prod.categoria,
       unidad: prod.consumoSemanal.unidad,
