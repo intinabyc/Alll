@@ -2373,6 +2373,24 @@ function detectarProtKey(nombre) {
   if (n.includes('huevo')) return 'huevo';
   return null;
 }
+// Cuenta automáticamente en cuántas comidas de la semana aparece una proteína (protKey)
+// recorriendo el PLAN real. Esto reemplaza el gramaje fijo de COMPRAS_SEMANALES como
+// fuente del "consumo semanal" — SOLO para proteínas, porque en la práctica el usuario
+// porciona el pollo/pescado/carne/huevo en unidades prácticas (ej. 110-120g), no en el
+// gramaje exacto que dice cada comida del plan.
+function getPorcionesSemanaPlan(protKey) {
+  if (!protKey) return 0;
+  let conteo = 0;
+  DIAS_ES.forEach(diaKey => {
+    const plan = PLAN[diaKey];
+    if (!plan) return;
+    plan.comidas.forEach(c => {
+      if (c.proteina && detectarProtKey(c.proteina.nombre) === protKey) conteo++;
+    });
+  });
+  return conteo;
+}
+
 function detectarVegKey(nombre) {
   const n = nombre.toLowerCase();
   if (n.includes('zanahoria')) return 'zanahoria_calabacin';
@@ -2640,6 +2658,9 @@ function guardarExcepcion() {
 }
 
 function borrarExcepcion(id) {
+  const exc = getExcepciones().find(e => e.id === id);
+  const desc = exc ? `${exc.alimento} (${exc.comida} del ${exc.fecha})` : 'esta excepción';
+  if (!confirm(`¿Borrar la excepción "${desc}"? Esta acción no se puede deshacer.`)) return;
   let excepciones = getExcepciones();
   excepciones = excepciones.filter(e => e.id !== id);
   saveExcepciones(excepciones);
@@ -2768,6 +2789,21 @@ function getCatalogoInventario() {
 }
 
 function construirEntradaCatalogo(nombre, categoria, cantidadTexto) {
+  // ── PROTEÍNAS: modelo por PORCIONES, no por gramos ──
+  // El usuario porciona el pollo/pescado/carne/huevo en unidades prácticas (ej. 110-120g)
+  // que no coinciden con el gramaje exacto del plan, así que el stock y el consumo se
+  // miden en "porciones" (cuántas veces por semana aparece esa proteína en el PLAN),
+  // no en gramos. Ver getPorcionesSemanaPlan().
+  if (categoria === 'proteina') {
+    const protKey = detectarProtKey(nombre);
+    return {
+      nombre, categoria,
+      protKey,
+      porcionesSemana: getPorcionesSemanaPlan(protKey),
+      keysGrupo: getKeysParaProductoInventario(nombre, categoria)
+    };
+  }
+
   const consumoBase = parsearCantidadInv(cantidadTexto);
   const keysGrupo = getKeysParaProductoInventario(nombre, categoria);
 
@@ -2879,7 +2915,7 @@ function toggleFormCompra() {
   if (form.classList.contains('open')) {
     document.getElementById('inv-fecha').value = new Date().toISOString().slice(0, 10);
     poblarLugaresInv();
-    window._loteInv = [{ producto: '', cantidadKg: '', mermaG: '', precioKg: '' }];
+    window._loteInv = [{ producto: '', cantidadKg: '', mermaG: '', precioKg: '', porciones: '' }];
     renderFilasInv();
     if (!window._tasaBCV) actualizarTasaBCV(true);
   }
@@ -2892,7 +2928,7 @@ function poblarLugaresInv() {
 }
 
 function agregarFilaInv() {
-  window._loteInv.push({ producto: '', cantidadKg: '', mermaG: '', precioKg: '' });
+  window._loteInv.push({ producto: '', cantidadKg: '', mermaG: '', precioKg: '', porciones: '' });
   renderFilasInv();
 }
 function quitarFilaInv(i) {
@@ -2945,6 +2981,8 @@ function renderFilasInv() {
 
   cont.innerHTML = window._loteInv.map((fila, i) => {
     const calc = calcularFilaInv(i);
+    const prodFila = catalogo.find(p => p.nombre === fila.producto);
+    const esProteina = prodFila && prodFila.categoria === 'proteina';
     const costoTotalFmt = calc.costoTotal > 0
       ? `${simbolo} ${calc.costoTotal.toFixed(2)}${moneda === 'USD' && window._tasaBCV ? ` · Bs ${(calc.costoTotal * window._tasaBCV).toFixed(2)}` : ''}`
       : '—';
@@ -2977,6 +3015,16 @@ function renderFilasInv() {
             oninput="actualizarFilaInv(${i},'precioKg',this.value);recalcularFilaInv(${i})">
         </div>
       </div>
+      ${esProteina ? `
+      <div style="margin-top:6px;background:var(--verde-pale);border-radius:8px;padding:8px 10px;">
+        <label style="font-size:9.5px;font-weight:700;color:var(--verde-mid);text-transform:uppercase;display:block;margin-bottom:3px;">
+          🍗 ¿Cuántas porciones sacaste de esto?
+        </label>
+        <input type="number" step="1" min="0" placeholder="Ej. 8" value="${fila.porciones || ''}"
+          style="width:100%;border:1.5px solid var(--verde-soft);border-radius:7px;padding:6px 7px;font-size:12px;font-family:var(--font-body);color:var(--text-dark);"
+          oninput="actualizarFilaInv(${i},'porciones',this.value)">
+        <div style="font-size:10px;color:var(--text-light);margin-top:3px;">El stock de proteínas se mide en porciones, no en gramos — tú decides cuánto rinde cada compra.</div>
+      </div>` : ''}
       <div class="inv-fila-resumen" id="inv-resumen-${i}">
         ${calc.costoTotal > 0 ? `
         <span>📦 ${(calc.totalG/1000).toFixed(2)}kg bruto → <strong>${(calc.netaG/1000).toFixed(2)}kg neto</strong></span>
@@ -3025,17 +3073,26 @@ async function guardarLoteInventario() {
     return;
   }
 
-  const filasValidas = window._loteInv.filter(f =>
-    f.producto &&
-    parseFloat(f.cantidadKg) > 0 &&
-    f.precioKg !== '' && !isNaN(parseFloat(f.precioKg))
-  );
+  const catalogo = getCatalogoInventario();
+
+  const filasValidas = window._loteInv.filter(f => {
+    if (!f.producto) return false;
+    if (parseFloat(f.cantidadKg) <= 0 || f.precioKg === '' || isNaN(parseFloat(f.precioKg))) return false;
+    const prod = catalogo.find(p => p.nombre === f.producto);
+    if (prod && prod.categoria === 'proteina') return parseInt(f.porciones) > 0;
+    return true;
+  });
   if (filasValidas.length === 0) {
-    alert('Agrega al menos un producto con cantidad (kg) y precio por kg.');
+    const hayProteinaSinPorciones = window._loteInv.some(f => {
+      const prod = catalogo.find(p => p.nombre === f.producto);
+      return f.producto && prod?.categoria === 'proteina' && !(parseInt(f.porciones) > 0);
+    });
+    alert(hayProteinaSinPorciones
+      ? 'Falta indicar cuántas porciones sacaste de la proteína (además de cantidad y precio).'
+      : 'Agrega al menos un producto con cantidad (kg) y precio por kg.');
     return;
   }
 
-  const catalogo = getCatalogoInventario();
   const tasa = window._tasaBCV;
   const compras = getComprasInventario();
 
@@ -3044,6 +3101,7 @@ async function guardarLoteInventario() {
     const calc = calcularFilaInv(window._loteInv.indexOf(f));
     const costoIngresado = parseFloat(f.precioKg) * parseFloat(f.cantidadKg);
     const costoUSD = moneda === 'USD' ? costoIngresado : costoIngresado / tasa;
+    const esProteina = prod && prod.categoria === 'proteina';
 
     compras.push({
       id: 'INV' + Date.now() + Math.random().toString(36).slice(2, 6),
@@ -3058,6 +3116,7 @@ async function guardarLoteInventario() {
       costoTotal: costoIngresado,
       costoKgNeto: parseFloat(calc.costoKgNeto),
       unidad: 'g',
+      porciones: esProteina ? parseInt(f.porciones) : null,
       costoUSD, monedaOriginal: moneda, tasaAlComprar: tasa,
       lugar,
       facturaBase64: _facturaBase64 || null,
@@ -3082,9 +3141,12 @@ async function guardarLoteInventario() {
 }
 
 let _compraEditandoId = null;
-let _compraEditState = { cantidadKg: '', mermaG: '', precio: '', lugar: '' };
+let _compraEditState = { cantidadKg: '', mermaG: '', precio: '', lugar: '', porciones: '' };
 
 function borrarCompraInventario(id) {
+  const compra = getComprasInventario().find(c => c.id === id);
+  const desc = compra ? `${compra.producto} del ${compra.fecha}` : 'este registro';
+  if (!confirm(`¿Borrar la compra "${desc}"? Esta acción no se puede deshacer.`)) return;
   let compras = getComprasInventario();
   compras = compras.filter(c => c.id !== id);
   saveComprasInventario(compras);
@@ -3101,7 +3163,8 @@ function editarCompra(id) {
     cantidadKg: String(c.cantidadKg ?? (c.cantidadBruta ? c.cantidadBruta / 1000 : '')),
     mermaG: String(c.mermaG || ''),
     precio: String(c.precioKg ?? ''),
-    lugar: c.lugar || ''
+    lugar: c.lugar || '',
+    porciones: String(c.porciones ?? '')
   };
   renderInvHistorial();
 }
@@ -3154,13 +3217,19 @@ function guardarEdicionCompra(id) {
   const c = compras[idx];
   const costoUSD = c.monedaOriginal === 'USD' ? costoTotal : costoTotal / c.tasaAlComprar;
 
+  if (c.categoria === 'proteina' && !(parseInt(_compraEditState.porciones) > 0)) {
+    alert('Indica cuántas porciones sacaste de esta proteína.');
+    return;
+  }
+
   compras[idx] = {
     ...c,
     cantidadKg: kg, mermaG, mermaPct,
     cantidadBruta: totalG, cantidadNeta: netaG,
     precioKg: precio, costoTotal, costoKgNeto,
     costoUSD,
-    lugar: _compraEditState.lugar.trim()
+    lugar: _compraEditState.lugar.trim(),
+    porciones: c.categoria === 'proteina' ? parseInt(_compraEditState.porciones) : (c.porciones ?? null)
   };
   saveComprasInventario(compras);
 
@@ -3209,6 +3278,52 @@ function calcularStockProducto(producto, catalogo) {
       }
     });
     return Math.max(0, stock);
+  }
+
+  // ── PROTEÍNAS: modelo por PORCIONES ──
+  // El consumo semanal ya NO sale de gramos hardcodeados: se cuenta automáticamente
+  // en cuántas comidas de la semana aparece esta proteína en el PLAN (getPorcionesSemanaPlan).
+  // El stock se mide en "porciones" tal como el usuario las registró al comprar
+  // (ver campo "¿Cuántas porciones sacaste de esto?" en el formulario de compra).
+  if (prod.categoria === 'proteina') {
+    const porcionesSemana = prod.porcionesSemana ?? getPorcionesSemanaPlan(prod.protKey);
+    const dailyAvg = porcionesSemana / 7; // porciones/día
+
+    let stockActual = 0;
+    compras.forEach(c => {
+      const porcionesCompra = c.porciones || 0;
+      const fechaCompra = new Date(c.fecha + 'T00:00:00');
+      const diasTranscurridos = Math.max(0, Math.floor((hoy - fechaCompra) / 86400000));
+      const consumido = diasTranscurridos * dailyAvg;
+      stockActual += Math.max(0, porcionesCompra - consumido);
+    });
+
+    // Ajustes manuales en porciones (independientes de los ajustes en gramos de otras categorías)
+    let stockConAjustes = stockActual;
+    ajustes.forEach(a => {
+      const deltaPorciones = a.deltaPorciones ?? 0;
+      if (deltaPorciones === 0) return;
+      if (deltaPorciones > 0) {
+        const fechaAj = new Date(a.fecha + 'T00:00:00');
+        const dias = Math.max(0, Math.floor((hoy - fechaAj) / 86400000));
+        const consumido = dias * dailyAvg;
+        stockConAjustes += Math.max(0, deltaPorciones - consumido);
+      } else {
+        stockConAjustes -= Math.abs(deltaPorciones);
+      }
+    });
+    stockConAjustes = Math.max(0, stockConAjustes);
+
+    const diasRestantes = dailyAvg > 0 ? stockConAjustes / dailyAvg : Infinity;
+    const fechaAgotamiento = new Date(hoy.getTime() + diasRestantes * 86400000);
+    return {
+      producto, categoria: prod.categoria,
+      unidad: 'porciones',
+      dailyAvg, stockActual: stockConAjustes, diasRestantes, fechaAgotamiento,
+      tieneCompras: compras.length > 0,
+      sinConsumoDefinido: porcionesSemana === 0,
+      esProteinaPorPorciones: true
+    };
   }
 
   // Si el producto tiene consumo semanal del plan → calcular días por consumo
@@ -3371,7 +3486,7 @@ function renderInvStock(estados) {
           <div class="inv-stock-nombre">${e.producto} <span style="font-size:9px;color:var(--text-light);font-weight:400;">personalizado</span></div>
           <div class="inv-stock-dias verde">En stock</div>
         </div>
-        <div class="inv-stock-sub">Stock total: ${Math.round(e.stockActual)} g (consumo no definido en el plan)</div>
+        <div class="inv-stock-sub">Stock total: ${Math.round(e.stockActual)} ${e.unidad || 'g'} (consumo no definido en el plan)</div>
         <div class="inv-stock-bar-track"><div class="inv-stock-bar-fill verde" style="width:100%"></div></div>
         ${construirAjusteFormHTML(e.producto)}
       </div>`;
@@ -3387,7 +3502,7 @@ function renderInvStock(estados) {
         <div class="inv-stock-nombre">${e.producto}</div>
         <div class="inv-stock-dias ${nivel}">${diasTxt}</div>
       </div>
-      <div class="inv-stock-sub">Stock neto: ${Math.round(e.stockActual)} ${e.unidad} · Consumo: ~${e.dailyAvg.toFixed(0)} ${e.unidad}/día${fechaTxt ? ' · ' + fechaTxt : ''}</div>
+      <div class="inv-stock-sub">Stock neto: ${e.unidad === 'porciones' ? e.stockActual.toFixed(1) : Math.round(e.stockActual)} ${e.unidad} · Consumo: ~${e.unidad === 'porciones' ? e.dailyAvg.toFixed(1) : e.dailyAvg.toFixed(0)} ${e.unidad}/día${fechaTxt ? ' · ' + fechaTxt : ''}</div>
       <div class="inv-stock-bar-track"><div class="inv-stock-bar-fill ${nivel}" style="width:${pct}%"></div></div>
       ${construirAjusteFormHTML(e.producto)}
     </div>`;
@@ -3418,12 +3533,18 @@ function getAjustesProducto(producto) {
 
 let _ajusteProductoAbierto = null;
 let _ajusteEditandoId = null;
-let _ajusteState = { cantidadKg: '', mermaG: '', nota: '' };
+let _ajusteState = { cantidadKg: '', mermaG: '', nota: '', porciones: '' };
+
+// Determina si un producto es de categoría proteína (modelo por porciones) sin tener
+// que recalcular todo el catálogo cada vez que se abre el formulario de ajuste.
+function esProductoProteina(producto) {
+  return getCatalogoInventario().find(p => p.nombre === producto)?.categoria === 'proteina';
+}
 
 function toggleAjusteForm(producto) {
   _ajusteProductoAbierto = _ajusteProductoAbierto === producto ? null : producto;
   _ajusteEditandoId = null;
-  _ajusteState = { cantidadKg: '', mermaG: '', nota: '' };
+  _ajusteState = { cantidadKg: '', mermaG: '', nota: '', porciones: '' };
   renderInventario();
 }
 
@@ -3432,7 +3553,10 @@ function editarAjuste(id) {
   if (!a) return;
   _ajusteProductoAbierto = a.producto;
   _ajusteEditandoId = id;
-  _ajusteState = { cantidadKg: String(a.cantidadKg), mermaG: String(a.mermaG || ''), nota: a.nota || '' };
+  _ajusteState = {
+    cantidadKg: String(a.cantidadKg || ''), mermaG: String(a.mermaG || ''), nota: a.nota || '',
+    porciones: String(a.porciones || '')
+  };
   renderInventario();
 }
 
@@ -3458,41 +3582,64 @@ function actualizarAjustePreview() {
 function guardarAjuste(signo) {
   const producto = _ajusteProductoAbierto;
   if (!producto) return;
-  const { kg, mermaG, netoG } = calcularNetoAjuste();
-  if (!kg || netoG <= 0) { alert('Indica al menos la cantidad (kg). La merma es opcional.'); return; }
+  const esProteina = esProductoProteina(producto);
 
   const ajustes = getAjustesInventario();
-  if (_ajusteEditandoId) {
-    const idx = ajustes.findIndex(a => a.id === _ajusteEditandoId);
-    if (idx >= 0) {
-      ajustes[idx] = {
-        ...ajustes[idx],
+
+  if (esProteina) {
+    const porciones = parseInt(_ajusteState.porciones) || 0;
+    if (porciones <= 0) { alert('Indica cuántas porciones quieres sumar o restar.'); return; }
+    const registro = {
+      producto,
+      fecha: new Date().toISOString().slice(0, 10),
+      porciones,
+      signo, deltaPorciones: signo * porciones, deltaG: 0,
+      nota: _ajusteState.nota.trim()
+    };
+    if (_ajusteEditandoId) {
+      const idx = ajustes.findIndex(a => a.id === _ajusteEditandoId);
+      if (idx >= 0) ajustes[idx] = { ...ajustes[idx], ...registro };
+    } else {
+      ajustes.push({ id: 'AJ' + Date.now() + Math.random().toString(36).slice(2, 6), ...registro });
+    }
+  } else {
+    const { kg, mermaG, netoG } = calcularNetoAjuste();
+    if (!kg || netoG <= 0) { alert('Indica al menos la cantidad (kg). La merma es opcional.'); return; }
+    if (_ajusteEditandoId) {
+      const idx = ajustes.findIndex(a => a.id === _ajusteEditandoId);
+      if (idx >= 0) {
+        ajustes[idx] = {
+          ...ajustes[idx],
+          cantidadKg: kg, mermaG,
+          netoG: Math.round(netoG),
+          signo, deltaG: signo * Math.round(netoG),
+          nota: _ajusteState.nota.trim()
+        };
+      }
+    } else {
+      ajustes.push({
+        id: 'AJ' + Date.now() + Math.random().toString(36).slice(2, 6),
+        producto,
+        fecha: new Date().toISOString().slice(0, 10),
         cantidadKg: kg, mermaG,
         netoG: Math.round(netoG),
         signo, deltaG: signo * Math.round(netoG),
         nota: _ajusteState.nota.trim()
-      };
+      });
     }
-  } else {
-    ajustes.push({
-      id: 'AJ' + Date.now() + Math.random().toString(36).slice(2, 6),
-      producto,
-      fecha: new Date().toISOString().slice(0, 10),
-      cantidadKg: kg, mermaG,
-      netoG: Math.round(netoG),
-      signo, deltaG: signo * Math.round(netoG),
-      nota: _ajusteState.nota.trim()
-    });
   }
   saveAjustesInventario(ajustes);
 
   _ajusteProductoAbierto = null;
   _ajusteEditandoId = null;
-  _ajusteState = { cantidadKg: '', mermaG: '', nota: '' };
+  _ajusteState = { cantidadKg: '', mermaG: '', nota: '', porciones: '' };
   renderInventario();
 }
 
 function borrarAjuste(id) {
+  const aj = getAjustesInventario().find(a => a.id === id);
+  const desc = aj ? `${aj.producto} (${aj.fecha})` : 'este ajuste';
+  if (!confirm(`¿Borrar el ajuste de "${desc}"? Esta acción no se puede deshacer.`)) return;
   let ajustes = getAjustesInventario();
   ajustes = ajustes.filter(a => a.id !== id);
   saveAjustesInventario(ajustes);
@@ -3507,10 +3654,15 @@ function construirAjusteFormHTML(producto) {
   const abierto = _ajusteProductoAbierto === producto;
   const productoEscapado = producto.replace(/'/g, "\\'");
   const editando = abierto && _ajusteEditandoId;
-  return `
-    <button class="inv-stock-ajustar-btn" onclick="toggleAjusteForm('${productoEscapado}')">${abierto ? '✕ Cancelar ajuste' : '✏️ Ajustar stock'}</button>
-    <div class="ajuste-form ${abierto ? 'open' : ''}">
-      ${editando ? '<div style="font-size:10.5px;font-weight:700;color:var(--amber);margin-bottom:6px;">✏️ Editando ajuste existente</div>' : ''}
+  const esProteina = esProductoProteina(producto);
+
+  const camposHTML = esProteina ? `
+      <div class="ajuste-form-grid" style="grid-template-columns:1fr;">
+        <div>
+          <label>Porciones a sumar/restar</label>
+          <input type="number" step="1" min="0" placeholder="Ej. 2" value="${_ajusteState.porciones}" oninput="actualizarAjusteCampo('porciones', this.value)">
+        </div>
+      </div>` : `
       <div class="ajuste-form-grid">
         <div>
           <label>Cantidad (kg)</label>
@@ -3520,9 +3672,15 @@ function construirAjusteFormHTML(producto) {
           <label>Merma (g)</label>
           <input type="number" step="1" min="0" placeholder="0" value="${_ajusteState.mermaG}" oninput="actualizarAjusteCampo('mermaG', this.value)">
         </div>
-      </div>
-      <input type="text" class="excepcion-form-input" id="ajuste-nota" placeholder="Nota (ej. porciones de 110–120 g)" style="margin-bottom:8px;" value="${_ajusteState.nota}" oninput="actualizarAjusteCampo('nota', this.value)">
-      <div class="ajuste-neto-preview" id="ajuste-preview">Completa cantidad (y merma si aplica) para ver el neto</div>
+      </div>`;
+
+  return `
+    <button class="inv-stock-ajustar-btn" onclick="toggleAjusteForm('${productoEscapado}')">${abierto ? '✕ Cancelar ajuste' : '✏️ Ajustar stock'}</button>
+    <div class="ajuste-form ${abierto ? 'open' : ''}">
+      ${editando ? '<div style="font-size:10.5px;font-weight:700;color:var(--amber);margin-bottom:6px;">✏️ Editando ajuste existente</div>' : ''}
+      ${camposHTML}
+      <input type="text" class="excepcion-form-input" id="ajuste-nota" placeholder="${esProteina ? 'Nota (opcional)' : 'Nota (ej. porciones de 110–120 g)'}" style="margin-bottom:8px;" value="${_ajusteState.nota}" oninput="actualizarAjusteCampo('nota', this.value)">
+      ${esProteina ? '' : '<div class="ajuste-neto-preview" id="ajuste-preview">Completa cantidad (y merma si aplica) para ver el neto</div>'}
       <div class="ajuste-signo-row">
         <button class="ajuste-signo-btn resta" onclick="guardarAjuste(-1)">➖ Restar del stock</button>
         <button class="ajuste-signo-btn suma" onclick="guardarAjuste(1)">➕ Sumar al stock</button>
@@ -3544,14 +3702,16 @@ function renderInvAjustesHistorial() {
   cont.innerHTML = ajustes.map(a => {
     const f = new Date(a.fecha + 'T12:00:00');
     const fechaTxt = `${f.getDate()} ${MESES[f.getMonth()].slice(0,3)}`;
+    const esPorciones = a.deltaPorciones !== undefined && a.deltaPorciones !== 0;
     const signoTxt = a.signo > 0 ? '+' : '−';
     const claseDelta = a.signo > 0 ? 'pos' : 'neg';
+    const deltaTxt = esPorciones ? `${signoTxt}${Math.abs(a.deltaPorciones)} porc.` : `${signoTxt}${Math.abs(a.deltaG)} g`;
     return `<div class="inv-ajuste-item">
       <div class="inv-ajuste-info">
         <div class="inv-ajuste-nombre">${a.producto}</div>
         <div class="inv-ajuste-meta">${fechaTxt}${a.mermaG ? ` · merma ${a.mermaG}g` : ''}${a.nota ? ' · ' + a.nota : ''}</div>
       </div>
-      <div class="inv-ajuste-delta ${claseDelta}">${signoTxt}${Math.abs(a.deltaG)} g</div>
+      <div class="inv-ajuste-delta ${claseDelta}">${deltaTxt}</div>
       <button class="inv-ajuste-borrar" style="margin-right:2px;" onclick="editarAjuste('${a.id}')" title="Editar">✏️</button>
       <button class="inv-ajuste-borrar" onclick="borrarAjuste('${a.id}')" title="Borrar">✕</button>
     </div>`;
@@ -3655,11 +3815,12 @@ function renderInvHistorial() {
     const cantidadTxt = c.mermaPct
       ? `${c.cantidadBruta} ${c.unidad} (merma ${c.mermaPct}% → ${Math.round(c.cantidadNeta)} ${c.unidad} netos)`
       : `${c.cantidadBruta ?? c.cantidad} ${c.unidad}`;
+    const porcionesTxt = c.categoria === 'proteina' && c.porciones ? ` · 🍗 ${c.porciones} porciones` : '';
     const editando = _compraEditandoId === c.id;
     return `<div>
       <div class="inv-historial-item">
         <div class="inv-historial-info">
-          <div class="inv-historial-nombre">${c.producto} — ${cantidadTxt}</div>
+          <div class="inv-historial-nombre">${c.producto} — ${cantidadTxt}${porcionesTxt}</div>
           <div class="inv-historial-meta">${fechaTxt}${c.lugar ? ' · ' + c.lugar : ''}</div>
         </div>
         <div class="inv-historial-costo">${formatoDual(c.costoUSD)}</div>
@@ -3674,6 +3835,7 @@ function renderInvHistorial() {
 
 function construirEdicionCompraHTML(c) {
   const simbolo = c.monedaOriginal === 'USD' ? '$' : 'Bs';
+  const esProteina = c.categoria === 'proteina';
   return `<div class="ajuste-form open" style="margin:0 16px 10px;">
     <div class="ajuste-form-grid" style="grid-template-columns:1fr 1fr 1fr;">
       <div>
@@ -3689,6 +3851,13 @@ function construirEdicionCompraHTML(c) {
         <input type="number" step="0.01" min="0" value="${_compraEditState.precio}" oninput="actualizarCompraEditCampo('precio', this.value)">
       </div>
     </div>
+    ${esProteina ? `
+    <div style="margin-bottom:8px;background:var(--verde-pale);border-radius:8px;padding:8px 10px;">
+      <label style="font-size:9.5px;font-weight:700;color:var(--verde-mid);text-transform:uppercase;display:block;margin-bottom:3px;">🍗 Porciones sacadas de esto</label>
+      <input type="number" step="1" min="0" value="${_compraEditState.porciones}"
+        style="width:100%;border:1.5px solid var(--verde-soft);border-radius:7px;padding:6px 7px;font-size:12px;font-family:var(--font-body);color:var(--text-dark);"
+        oninput="actualizarCompraEditCampo('porciones', this.value)">
+    </div>` : ''}
     <input type="text" class="excepcion-form-input" placeholder="Lugar de compra" style="margin-bottom:8px;" value="${_compraEditState.lugar}" oninput="actualizarCompraEditCampo('lugar', this.value)">
     <div class="ajuste-neto-preview" id="compra-edit-preview">Ajusta los valores para ver el nuevo cálculo</div>
     <div class="excepcion-form-actions">
@@ -3807,6 +3976,9 @@ function guardarProductoPersonalizado() {
 }
 
 function borrarProductoPersonalizado(id) {
+  const prod = getProductosPersonalizados().find(p => p.id === id);
+  const desc = prod ? prod.nombre : 'este producto';
+  if (!confirm(`¿Borrar "${desc}"? Esto no borra el historial de compras/ajustes ya asociado, pero el producto dejará de aparecer en el selector. Esta acción no se puede deshacer.`)) return;
   let prods = getProductosPersonalizados();
   prods = prods.filter(p => p.id !== id);
   saveProductosPersonalizados(prods);
