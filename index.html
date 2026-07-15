@@ -511,10 +511,42 @@
       background: var(--verde-light); border-radius: 10px;
       font-size: 12px; font-weight: 700; color: var(--verde-deep);
     }
+    /* ── COMPRAS: SÚPER-PESTAÑAS (Lista de compras / Registrar compra) ── */
+    .compras-super-selector { display: flex; gap: 8px; padding: 14px 16px 0; }
+    .compras-super-tab {
+      flex: 1; text-align: center; padding: 11px 8px;
+      background: var(--verde-pale); border: 1.5px solid transparent;
+      border-radius: 12px; font-size: 12.5px; font-weight: 700;
+      color: var(--text-mid); cursor: pointer;
+    }
+    .compras-super-tab.active { background: var(--verde-deep); color: white; }
+
     .compras-limpiar {
       margin: 16px 16px 0; width: calc(100% - 32px);
       background: none; border: 1.5px solid var(--border); color: var(--text-light);
       padding: 9px; border-radius: 10px; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+
+    /* ── COMPRAS: CALCULADORA "POR DÍAS" ── */
+    .compras-dias-presets { display: flex; gap: 6px; margin-bottom: 8px; }
+    .compras-dias-preset {
+      flex: 1; padding: 9px 4px; border-radius: 10px;
+      background: var(--verde-pale); border: 1.5px solid transparent;
+      font-size: 11.5px; font-weight: 700; color: var(--verde-deep); cursor: pointer;
+    }
+    .compras-dias-custom { display: flex; gap: 8px; }
+    .compras-dias-input {
+      flex: 1; border: 1.5px solid var(--border); border-radius: 10px;
+      padding: 9px 12px; font-size: 13px; font-family: var(--font-body); color: var(--text-dark);
+    }
+    .compras-dias-btn {
+      background: var(--verde-mid); color: white; border: none;
+      padding: 9px 16px; border-radius: 10px; font-size: 12.5px; font-weight: 700; cursor: pointer;
+    }
+    .compras-dias-resultado-titulo {
+      margin: 14px 16px 0; padding: 10px 14px;
+      background: var(--verde-light); border-radius: 10px;
+      font-size: 12px; font-weight: 700; color: var(--verde-deep);
     }
 
     /* ── CONFIG BUTTON (header) ── */
@@ -1129,16 +1161,38 @@
     <div class="recetas-hero">
       <div class="eyebrow">Lista de compras</div>
       <h2>Compras</h2>
-      <p>Diaria, semanal o mensual</p>
+      <p>Diaria, semanal, mensual o por días</p>
     </div>
+
+    <div class="compras-super-selector">
+      <div class="compras-super-tab active" data-super="lista" onclick="cambiarSuperTabCompras('lista',this)">📋 Lista de compras</div>
+      <div class="compras-super-tab" data-super="registrar" onclick="cambiarSuperTabCompras('registrar',this)">🧾 Registrar compra</div>
+    </div>
+
+    <div id="compras-super-lista">
     <div class="compras-selector">
       <div class="compras-tab active" data-vista="diaria" onclick="cambiarVistaCompras('diaria',this)">Diaria</div>
       <div class="compras-tab" data-vista="semanal" onclick="cambiarVistaCompras('semanal',this)">Semanal</div>
       <div class="compras-tab" data-vista="mensual" onclick="cambiarVistaCompras('mensual',this)">Mensual</div>
+      <div class="compras-tab" data-vista="dias" onclick="cambiarVistaCompras('dias',this)">Por días</div>
+    </div>
+    <div id="compras-dias-calculadora" style="display:none; margin:0 16px 12px;">
+      <div class="compras-dias-presets">
+        <button class="compras-dias-preset" onclick="calcularComprasPorDias(1)">1 día</button>
+        <button class="compras-dias-preset" onclick="calcularComprasPorDias(7)">7 días</button>
+        <button class="compras-dias-preset" onclick="calcularComprasPorDias(15)">15 días</button>
+        <button class="compras-dias-preset" onclick="calcularComprasPorDias(30)">30 días</button>
+      </div>
+      <div class="compras-dias-custom">
+        <input type="number" min="1" id="compras-dias-input" placeholder="Ej. 10" class="compras-dias-input">
+        <button class="compras-dias-btn" onclick="calcularComprasPorDiasInput()">Calcular</button>
+      </div>
     </div>
     <div id="compras-container"></div>
-    <button class="compras-limpiar" onclick="limpiarCompras()">Limpiar selección</button>
+    <button class="compras-limpiar" id="compras-limpiar-btn" onclick="limpiarCompras()">Limpiar selección</button>
+    </div><!-- /compras-super-lista -->
 
+    <div id="compras-super-registrar" style="display:none;">
     <div class="section-label">🧾 Registrar lo que compraste</div>
     <div id="inv-tasa-banner"></div>
 
@@ -1248,6 +1302,7 @@
 
     <div class="section-label">🧾 Compras registradas</div>
     <div id="inv-historial-container"></div>
+    </div><!-- /compras-super-registrar -->
   </div>
 
   <!-- ══ PANEL INVENTARIO ══ -->
@@ -1826,6 +1881,7 @@ let filtroActual = 'todas';
 //  INICIALIZAR
 // ═══════════════════════════════════════════════
 function init() {
+  limpiarComprasViejas(); // limpiar checkboxes de días anteriores automáticamente
   const hoy = new Date();
   const diaIdx = hoy.getDay(); // 0=domingo
   const diaKey = DIAS_ES[diaIdx];
@@ -2260,11 +2316,133 @@ function comprasItemEl(nombre, cantidad, nota, key, checked) {
   return el;
 }
 
+// ── COMPRAS: SÚPER-PESTAÑAS (Lista de compras / Registrar compra) ──
+function cambiarSuperTabCompras(tab, btn) {
+  document.querySelectorAll('.compras-super-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('compras-super-lista').style.display = tab === 'lista' ? '' : 'none';
+  document.getElementById('compras-super-registrar').style.display = tab === 'registrar' ? '' : 'none';
+  if (tab === 'registrar') {
+    renderComprasRegistro();
+    poblarLugaresInv();
+    if (!window._tasaBCV) actualizarTasaBCV(true);
+  }
+}
+
 function cambiarVistaCompras(vista, btn) {
   vistaComprasActual = vista;
   document.querySelectorAll('.compras-tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
-  renderCompras();
+
+  const calc = document.getElementById('compras-dias-calculadora');
+  const limpiarBtn = document.getElementById('compras-limpiar-btn') || document.querySelector('.compras-limpiar');
+  const container = document.getElementById('compras-container');
+
+  if (vista === 'dias') {
+    calc.style.display = 'block';
+    if (limpiarBtn) limpiarBtn.style.display = 'none';
+    container.innerHTML = '<div class="excepcion-empty" style="padding:16px;text-align:center;color:var(--text-light);font-size:12px;">Elige un preset o escribe un número de días arriba ↑</div>';
+  } else {
+    calc.style.display = 'none';
+    if (limpiarBtn) limpiarBtn.style.display = '';
+    renderCompras();
+  }
+}
+
+// ── COMPRAS: CALCULADORA "POR DÍAS" ──
+// Reutiliza el catálogo de Inventario (getCatalogoInventario), que ya trae el consumo
+// semanal estimado de CADA producto que rota en el plan (COMPRAS_SEMANALES) — usa ese
+// estimado semanal simple (dailyAvg × días), no el consumo real día-a-día de PLAN+Ajustes:
+// para decidir CUÁNTO COMPRAR de cara al futuro un promedio es lo que corresponde (no se
+// puede saber "qué día exacto" cae dentro de N días desde hoy en todos los casos), a
+// diferencia del cálculo de stock restante, que si necesita el patrón real día a día.
+function calcularComprasPorDias(dias) {
+  const input = document.getElementById('compras-dias-input');
+  if (input) input.value = dias;
+  renderCalculadoraComprasPorDias(dias);
+}
+
+function calcularComprasPorDiasInput() {
+  const dias = parseInt(document.getElementById('compras-dias-input').value, 10);
+  if (!dias || dias <= 0) { alert('Ingresa un número de días válido.'); return; }
+  renderCalculadoraComprasPorDias(dias);
+}
+
+function formatearCantidadCompras(valor, unidad) {
+  if (unidad === 'g' && valor >= 1000) return (valor / 1000).toFixed(2).replace(/\.00$/, '') + ' kg';
+  if (unidad === 'ml' && valor >= 1000) return (valor / 1000).toFixed(2).replace(/\.00$/, '') + ' L';
+  if (unidad === 'unidades') return Math.max(1, Math.ceil(valor)) + ' unid.';
+  return Math.round(valor) + ' ' + unidad;
+}
+
+function renderCalculadoraComprasPorDias(dias) {
+  const container = document.getElementById('compras-container');
+  const catalogo = getCatalogoInventario();
+  const porCategoria = {};
+  catalogo.forEach(p => { (porCategoria[p.categoria] = porCategoria[p.categoria] || []).push(p); });
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+
+  // Suma el consumo REAL de los próximos `dias` días a partir de hoy (día por día,
+  // según el patrón exacto del PLAN) — NO un promedio plano. Un promedio (ej.
+  // consumoSemanal/7) no corresponde a ningún día real: un producto que solo se usa
+  // martes y viernes necesita 0 la mayoría de días y su ración completa esos dos días,
+  // nunca "un poquito cada día". Mismo modelo que ya usa calcularStockProducto().
+  function sumarConsumoProximosDias(getConsumoDiaFn, dias) {
+    let total = 0;
+    for (let i = 0; i < dias; i++) {
+      const fecha = new Date(hoy.getTime() + i * 86400000);
+      total += getConsumoDiaFn(DIAS_ES[fecha.getDay()]) || 0;
+    }
+    return total;
+  }
+
+  let html = `<div class="compras-dias-resultado-titulo">🛒 Lista para ${dias} día${dias === 1 ? '' : 's'} — a partir de hoy, según el PLAN real</div>`;
+  INV_CATEGORIA_KEYS.forEach(cat => {
+    if (!porCategoria[cat] || porCategoria[cat].length === 0) return;
+    let bloqueHtml = '';
+    porCategoria[cat].forEach(p => {
+      let cantidadNecesaria, unidad;
+      if (p.categoria === 'proteina') {
+        if (!p.protKey) return;
+        cantidadNecesaria = sumarConsumoProximosDias(dia => getPorcionesDiaPlan(p.protKey, dia), dias);
+        unidad = 'porciones';
+      } else {
+        if (!p.consumoSemanal || !p.consumoSemanal.valor) return;
+        if (p.keysGrupo && p.keysGrupo.length > 0) {
+          cantidadNecesaria = sumarConsumoProximosDias(dia => getConsumoDiaProducto(p, dia), dias);
+        } else {
+          // Personalizado sin mapeo al PLAN: no hay patrón de día que calcular, se usa
+          // el único dato disponible (promedio del consumo semanal manual).
+          cantidadNecesaria = (p.consumoSemanal.valor / 7) * dias;
+        }
+        unidad = p.consumoSemanal.unidad;
+      }
+      if (!cantidadNecesaria || cantidadNecesaria <= 0) return; // no toca en estos días, no hace falta comprar
+      bloqueHtml += `<div class="compras-item" style="cursor:default;">
+        <div class="compras-item-info"><div class="compras-item-nombre">${p.nombre}</div></div>
+        <div class="compras-item-cantidad">${formatearCantidadCompras(cantidadNecesaria, unidad)}</div>
+      </div>`;
+    });
+    if (!bloqueHtml) return; // categoría sin nada que comprar en este rango de días
+    html += `<div class="compras-categoria"><div class="compras-cat-titulo">${INV_CATEGORIA_LABEL[cat]}</div>${bloqueHtml}</div>`;
+  });
+  container.innerHTML = html;
+}
+
+// Limpia automáticamente las claves de compras diarias de días anteriores (formato
+// `diaria_<fecha>_i`) — sin esto, cada día que pasa deja una clave vieja huérfana en
+// localStorage para siempre. Se llama una vez al abrir la app (ver init()).
+function limpiarComprasViejas() {
+  const hoy = new Date().toISOString().slice(0, 10);
+  const state = getComprasState();
+  let cambio = false;
+  Object.keys(state).forEach(k => {
+    if (k.startsWith('diaria_') && !k.includes(hoy)) {
+      delete state[k];
+      cambio = true;
+    }
+  });
+  if (cambio) localStorage.setItem('compras_state', JSON.stringify(state));
 }
 
 // ═══════════════════════════════════════════════
@@ -2533,11 +2711,51 @@ function getGramosDiaParaKey(grupo, key, diaKey) {
 //   sumando todas sus keys (algunos productos agrupan varias, ej. chayota+vainitas).
 // - Producto personalizado sin mapeo (keysGrupo vacío): no hay patrón de día conocido,
 //   se devuelve null para que quien llame use el promedio plano como único recurso.
+// Cuenta cuántas veces aparece esta key en un día específico de la semana. Sirve
+// para distribuir proporcionalmente el consumo semanal cuando el PLAN no anota
+// gramos reales para esa key (ver getConsumoDiaProducto → caso 'vegetal').
+function getAparicionesDiaParaKey(grupo, key, diaKey) {
+  const plan = PLAN[diaKey];
+  if (!plan) return 0;
+  let conteo = 0;
+  plan.comidas.forEach(c => {
+    let campo = null, detKey = null;
+    if (grupo === 'carbohidratos' && c.carbohidrato) { campo = c.carbohidrato; detKey = detectarCarbKey(c.carbohidrato.nombre); }
+    else if (grupo === 'vegetales' && c.vegetal) { campo = c.vegetal; detKey = detectarVegKey(c.vegetal.nombre); }
+    else if (grupo === 'frutas' && c.fruta) { campo = c.fruta; detKey = detectarFrutaKey(c.fruta.nombre); }
+    if (campo && detKey === key) conteo++;
+  });
+  return conteo;
+}
+
+// ⚠️ IMPORTANTE — por qué los VEGETALES son un caso especial:
+// El PLAN registra tubérculos y frutas con cantidades reales ("480 g", "1 unidad",
+// "6 unidades"), pero los vegetales están anotados en TAZAS ("1 taza"), que no es
+// una unidad de peso. Sumar el "1" de "1 taza" como si fuera "1 gramo" (lo que hacía
+// esta función antes) subestimaba el consumo real por un factor de ~100x. Como no
+// hay gramaje real que sumar día a día para vegetales, se distribuye el total
+// semanal confiable (de la lista de compras, `consumoSemanal`) proporcional a
+// CUÁNTAS VECES aparece esa key cada día — un día con 2 apariciones pesa el doble
+// que un día con 1, igual que si tuviéramos gramos reales, pero sin inventar un
+// gramaje que el PLAN no registra.
 function getConsumoDiaProducto(prod, diaKey) {
   if (prod.categoria === 'proteina') {
     return getPorcionesDiaPlan(prod.protKey, diaKey);
   }
   if (!prod.keysGrupo || prod.keysGrupo.length === 0) return null;
+
+  if (prod.categoria === 'vegetal') {
+    let pesoDia = 0, pesoSemana = 0;
+    prod.keysGrupo.forEach(({ grupo, key }) => {
+      pesoDia += getAparicionesDiaParaKey(grupo, key, diaKey);
+      DIAS_ES.forEach(d => pesoSemana += getAparicionesDiaParaKey(grupo, key, d));
+    });
+    if (pesoSemana === 0) return 0;
+    const totalSemanaConfiable = (prod.consumoSemanal && prod.consumoSemanal.valor) || 0;
+    return totalSemanaConfiable * (pesoDia / pesoSemana);
+  }
+
+  // Tubérculos y frutas: el PLAN sí registra gramos/unidades reales por comida.
   let total = 0;
   prod.keysGrupo.forEach(({ grupo, key }) => {
     total += getGramosDiaParaKey(grupo, key, diaKey);
@@ -2830,7 +3048,12 @@ function parsearCantidadInv(str) {
   else if (s.includes(' l') || s.endsWith('l')) unidad = 'l';
   else if (s.includes('unidad') || s.includes('docena') || s.includes('frasco') || s.includes('botella') || s.includes('racimo') || s.includes('trozo')) unidad = 'unidades';
   else if (s.includes('taza')) unidad = 'g';
-  const nums = (s.match(/[\d.]+/g) || ['0']).map(Number);
+  // Cuando la unidad es "unidades" (racimo, trozo, docena...), el texto puede traer un
+  // peso de referencia entre paréntesis, ej. "1 racimo (400-500 g)" — ese peso NO es
+  // parte del conteo y no debe promediarse junto con él (antes daba ~300 "unidades" en
+  // vez de 1). Se ignoran los números entre paréntesis solo en este caso.
+  const textoParaNumeros = unidad === 'unidades' ? s.replace(/\([^)]*\)/g, '') : s;
+  const nums = (textoParaNumeros.match(/[\d.]+/g) || ['0']).map(Number);
   let valor = nums.reduce((a, b) => a + b, 0) / nums.length;
   if (unidad === 'kg') { valor *= 1000; unidad = 'g'; }
   if (unidad === 'l') { valor *= 1000; unidad = 'ml'; }
@@ -3034,13 +3257,12 @@ function quitarFilaInv(i) {
 }
 function actualizarFilaInv(i, campo, valor) {
   window._loteInv[i][campo] = valor;
-  // Si es el selector de producto, actualizar el DOM inmediatamente sin re-renderizar
+  // Al cambiar el producto hay que volver a dibujar la fila completa: el recuadro de
+  // "¿Cuántas porciones sacaste?" solo se decide dentro de renderFilasInv() según la
+  // categoría del producto elegido (esProteina). Antes solo se parchaba el <select> en
+  // el DOM sin re-renderizar, así que ese recuadro nunca llegaba a aparecer.
   if (campo === 'producto') {
-    const filas = document.querySelectorAll('.inv-fila-producto');
-    if (filas[i]) {
-      const sel = filas[i].querySelector('select');
-      if (sel) sel.value = valor;
-    }
+    renderFilasInv();
   }
 }
 
@@ -3427,14 +3649,22 @@ function calcularStockProducto(producto, catalogo) {
   // Si el producto tiene consumo semanal del plan → calcular días por consumo real,
   // día por día, en vez de un promedio plano (ver getConsumoDiaProducto arriba).
   if (prod.consumoSemanal && prod.consumoSemanal.valor > 0) {
-    const dailyAvg = prod.consumoSemanal.valor / 7; // solo referencial para el texto "~X/día"
     const tieneMapeoDia = prod.keysGrupo && prod.keysGrupo.length > 0;
     // Si el producto no tiene mapeo al PLAN (ej. personalizado con consumo manual en
     // gramos/semana), no hay patrón de día que calcular: se usa el promedio plano
     // como único recurso disponible, igual que antes.
     const getConsumoDia = tieneMapeoDia
       ? (diaKey) => getConsumoDiaProducto(prod, diaKey)
-      : () => dailyAvg;
+      : () => prod.consumoSemanal.valor / 7;
+
+    // El "g/día" que se MUESTRA tiene que ser el mismo número que realmente usa el
+    // cálculo de stock — antes salía de una fuente distinta (consumoSemanal.valor/7,
+    // basado en la lista de compras) que no coincidía con el consumo real del PLAN
+    // día a día, dando un promedio "aplanado" que no reflejaba días de consumo alto
+    // (ej. Ocumo: el lunes se gastan 1280 g en 3 comidas, no un parejo ~450 g/día).
+    const dailyAvg = tieneMapeoDia
+      ? DIAS_ES.reduce((sum, d) => sum + getConsumoDiaProducto(prod, d), 0) / 7
+      : prod.consumoSemanal.valor / 7;
 
     let stockActual = 0;
     compras.forEach(c => {
