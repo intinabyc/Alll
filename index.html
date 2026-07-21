@@ -632,6 +632,15 @@
       border: 1.5px solid var(--border); padding: 10px; border-radius: 12px;
       font-size: 12px; font-weight: 600; cursor: pointer; margin-top: 8px;
     }
+    .danger-zone-box {
+      margin-top: 8px; padding: 12px 14px; border-radius: 12px;
+      background: #fdecea; border: 1.5px solid #f1b0a8;
+    }
+    .danger-zone-box p { font-size: 11.5px; color: #8a2e24; line-height: 1.5; margin: 0 0 10px; }
+    .danger-zone-btn {
+      width: 100%; background: #c0392b; color: white; border: none;
+      padding: 11px; border-radius: 10px; font-size: 12.5px; font-weight: 700; cursor: pointer;
+    }
     .config-saved-msg {
       background: var(--verde-light); color: var(--verde-deep);
       font-size: 12px; font-weight: 600; text-align: center;
@@ -1051,7 +1060,8 @@
   </div>
   <div style="display:flex;align-items:center;">
     <div class="header-badge" id="semana-badge">Semana 1</div>
-    <button class="config-btn" onclick="abrirConfig()" style="margin-left:8px;">⚙️</button>
+    <button class="config-btn" id="modo-btn" onclick="toggleModoUsuario()" style="margin-left:8px;" title="Cambiar modo">🔒</button>
+    <button class="config-btn" id="config-btn-header" onclick="abrirConfig()" style="margin-left:8px;">⚙️</button>
   </div>
 </header>
 
@@ -1449,6 +1459,16 @@
 
       <button class="config-save-btn" onclick="guardarConfig()">Guardar ajustes</button>
       <button class="config-reset-btn" onclick="resetConfig()">Restaurar valores originales del plan</button>
+
+      <div class="config-section-title" style="color:#c0392b;">⚠️ Zona de peligro</div>
+      <div class="danger-zone-box">
+        <p>Esto borra TODO lo registrado en este dispositivo — compras, inventario,
+        ajustes, excepciones, recetas marcadas como hechas, productos personalizados
+        y la tasa del dólar guardada. La app vuelve a quedar como recién instalada.
+        Esta acción no se puede deshacer.</p>
+        <button class="danger-zone-btn" onclick="restablecerDeFabrica()">Restablecer de fábrica (borra todo)</button>
+      </div>
+
       <div class="config-saved-msg" id="config-saved-msg">✓ Ajustes guardados correctamente</div>
     </div>
   </div>
@@ -1882,6 +1902,7 @@ let filtroActual = 'todas';
 // ═══════════════════════════════════════════════
 function init() {
   limpiarComprasViejas(); // limpiar checkboxes de días anteriores automáticamente
+  aplicarModoUsuario(); // Modo Cuidador / Modo Niño — oculta pestañas según corresponda
   const hoy = new Date();
   const diaIdx = hoy.getDay(); // 0=domingo
   const diaKey = DIAS_ES[diaIdx];
@@ -2051,6 +2072,67 @@ function toggleNatacion() {
 // ═══════════════════════════════════════════════
 //  NAVEGACIÓN TABS
 // ═══════════════════════════════════════════════
+// ═══════════════════════════════════════════════
+//  MODO CUIDADOR / MODO NIÑO
+// ═══════════════════════════════════════════════
+// El Cuidador prepara las recetas y administra Compras/Inventario/Ajustes.
+// El Niño, con la app en su teléfono, solo debe ver el menú del día y las recetas
+// (lo que necesita para cocinarse sin ayuda) — sin acceso a Compras/Inventario/
+// Ajustes, que son cosas de administración que no le corresponden.
+// Para volver a Modo Cuidador desde Modo Niño se pide un PIN, así el niño no puede
+// volver solo por error (o a propósito) y tocar Ajustes/Inventario.
+function aplicarModoUsuario() {
+  const modo = localStorage.getItem('modo_usuario') || 'cuidador';
+  const esNino = modo === 'nino';
+
+  const navCompras = document.getElementById('nav-compras');
+  const navInventario = document.getElementById('nav-inventario');
+  const configBtn = document.getElementById('config-btn-header');
+  const modoBtn = document.getElementById('modo-btn');
+
+  navCompras.style.display = esNino ? 'none' : '';
+  navInventario.style.display = esNino ? 'none' : '';
+  configBtn.style.display = esNino ? 'none' : '';
+  modoBtn.textContent = esNino ? '👦' : '🔒';
+  modoBtn.title = esNino ? 'Modo Niño activo — toca para volver a Modo Cuidador' : 'Modo Cuidador activo — toca para activar Modo Niño';
+
+  // Si el niño estaba parado en Compras/Inventario cuando se activó este modo (o al
+  // recargar la app), lo regresamos al Menú para que no se quede en una pantalla que
+  // ya no tiene botón de navegación para salir.
+  if (esNino) {
+    const panelActivo = document.querySelector('.tab-panel.active');
+    if (panelActivo && (panelActivo.id === 'panel-compras' || panelActivo.id === 'panel-inventario')) {
+      cambiarTab('menu');
+    }
+  }
+}
+
+function toggleModoUsuario() {
+  const modoActual = localStorage.getItem('modo_usuario') || 'cuidador';
+
+  if (modoActual === 'cuidador') {
+    // Pasar a Modo Niño: si no hay PIN configurado todavía, se pide crear uno ahora
+    // para poder volver después.
+    let pin = localStorage.getItem('modo_usuario_pin');
+    if (!pin) {
+      pin = prompt('Vas a activar el Modo Niño (solo Menú y Recetas).\n\nCrea un PIN de 4 dígitos para poder volver luego a Modo Cuidador:');
+      if (!pin) return; // canceló, no se activa nada
+      localStorage.setItem('modo_usuario_pin', pin);
+    } else {
+      if (!confirm('¿Activar Modo Niño? Solo se verán Menú y Recetas — para volver hará falta el PIN.')) return;
+    }
+    localStorage.setItem('modo_usuario', 'nino');
+  } else {
+    // Volver a Modo Cuidador: pedir el PIN
+    const pinGuardado = localStorage.getItem('modo_usuario_pin') || '0000';
+    const intento = prompt('Ingresa el PIN para volver a Modo Cuidador:');
+    if (intento === null) return;
+    if (intento !== pinGuardado) { alert('PIN incorrecto.'); return; }
+    localStorage.setItem('modo_usuario', 'cuidador');
+  }
+  aplicarModoUsuario();
+}
+
 function cambiarTab(tab) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
@@ -2366,6 +2448,19 @@ function calcularComprasPorDiasInput() {
   const dias = parseInt(document.getElementById('compras-dias-input').value, 10);
   if (!dias || dias <= 0) { alert('Ingresa un número de días válido.'); return; }
   renderCalculadoraComprasPorDias(dias);
+}
+
+// Convierte una lista de días (ej. ['lunes','viernes']) en "Lunes y Viernes" — en
+// orden de semana (lunes→domingo), no en el orden de DIAS_ES (que empieza domingo).
+// Se usa en Inventario para mostrar el patrón real de uso en vez de un promedio
+// diario que confunde cuando un producto se usa de golpe unos días y nada otros.
+function formatearListaDias(dias) {
+  const NOMBRES_DIA = { domingo: 'Domingo', lunes: 'Lunes', martes: 'Martes', miercoles: 'Miércoles', jueves: 'Jueves', viernes: 'Viernes', sabado: 'Sábado' };
+  const ORDEN_SEMANA = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
+  const ordenados = ORDEN_SEMANA.filter(d => dias.includes(d)).map(d => NOMBRES_DIA[d]);
+  if (ordenados.length === 0) return '';
+  if (ordenados.length === 1) return ordenados[0];
+  return ordenados.slice(0, -1).join(', ') + ' y ' + ordenados[ordenados.length - 1];
 }
 
 function formatearCantidadCompras(valor, unidad) {
@@ -2870,6 +2965,38 @@ function guardarConfig() {
   initCocinarManana(window._diaKey);
   renderCompras(); // sincronizar vista diaria de compras también
   renderInventario(); // el consumo estimado de stock depende de estos overrides
+}
+
+// ═══════════════════════════════════════════════
+//  RESTABLECER DE FÁBRICA (borra TODO el localStorage de la app)
+// ═══════════════════════════════════════════════
+// Doble confirmación a propósito: un confirm() normal es fácil de tocar sin querer;
+// para una acción irreversible que borra todos los datos, se pide escribir la
+// palabra "BORRAR" para confirmar que es intencional.
+function restablecerDeFabrica() {
+  if (!confirm('¿Seguro que quieres borrar TODOS los datos guardados en este dispositivo? Esta acción no se puede deshacer.')) return;
+  const texto = prompt('Para confirmar, escribe la palabra BORRAR (en mayúsculas):');
+  if (texto !== 'BORRAR') {
+    if (texto !== null) alert('No coincide con "BORRAR". No se borró nada.');
+    return;
+  }
+
+  // Claves fijas conocidas de la app
+  const clavesFijas = [
+    'bcv_tasa_cache', 'compras_state', 'inventario_ajustes', 'inventario_compras',
+    'plan_excepciones', 'plan_overrides', 'productos_personalizados',
+    'recetas_historial', 'sync_codigo_familia', 'modo_usuario', 'modo_usuario_pin'
+  ];
+  clavesFijas.forEach(k => localStorage.removeItem(k));
+
+  // Claves dinámicas con prefijo (ej. "cocinar_2026-07-21")
+  const prefijosDinamicos = ['cocinar_'];
+  Object.keys(localStorage).forEach(k => {
+    if (prefijosDinamicos.some(p => k.startsWith(p))) localStorage.removeItem(k);
+  });
+
+  alert('Listo — todos los datos fueron borrados. La app se va a recargar.');
+  location.reload();
 }
 
 function resetConfig() {
@@ -3636,13 +3763,21 @@ function calcularStockProducto(producto, catalogo) {
     stockConAjustes = Math.max(0, stockConAjustes);
 
     const { diasRestantes, fechaAgotamiento } = proyectarAgotamiento(stockConAjustes, getConsumoDia, hoy);
+
+    // Patrón real de uso (ej. "Lunes y Viernes"), para mostrar en vez de un promedio
+    // diario que confunde cuando el producto se usa de golpe algunos días y nada otros.
+    const diasConUso = DIAS_ES.filter(d => getConsumoDia(d) > 0);
+    const patronUso = (diasConUso.length > 0 && diasConUso.length < 7) ? formatearListaDias(diasConUso) : null;
+    const cantidadPorUso = diasConUso.length > 0 ? (dailyAvg * 7) / diasConUso.length : 0;
+
     return {
       producto, categoria: prod.categoria,
       unidad: 'porciones',
       dailyAvg, stockActual: stockConAjustes, diasRestantes, fechaAgotamiento,
       tieneCompras: compras.length > 0,
       sinConsumoDefinido: porcionesSemana === 0,
-      esProteinaPorPorciones: true
+      esProteinaPorPorciones: true,
+      patronUso, cantidadPorUso
     };
   }
 
@@ -3676,12 +3811,23 @@ function calcularStockProducto(producto, catalogo) {
     stockActual = aplicarAjustes(stockActual, getConsumoDia);
     stockActual = aplicarExcepcionesHoy(stockActual, prod.keysGrupo);
     const { diasRestantes, fechaAgotamiento } = proyectarAgotamiento(stockActual, getConsumoDia, hoy);
+
+    // Patrón real de uso (ej. "Lunes y Viernes") — solo si el producto tiene mapeo al
+    // PLAN; los personalizados sin mapeo no tienen un patrón de día real que mostrar.
+    let patronUso = null, cantidadPorUso = 0;
+    if (tieneMapeoDia) {
+      const diasConUso = DIAS_ES.filter(d => getConsumoDiaProducto(prod, d) > 0);
+      patronUso = (diasConUso.length > 0 && diasConUso.length < 7) ? formatearListaDias(diasConUso) : null;
+      cantidadPorUso = diasConUso.length > 0 ? (dailyAvg * 7) / diasConUso.length : 0;
+    }
+
     return {
       producto, categoria: prod.categoria,
       unidad: prod.consumoSemanal.unidad,
       dailyAvg, stockActual, diasRestantes, fechaAgotamiento,
       tieneCompras: compras.length > 0,
-      sinConsumoDefinido: false
+      sinConsumoDefinido: false,
+      patronUso, cantidadPorUso
     };
   }
 
@@ -3833,12 +3979,15 @@ function renderInvStock(estados) {
     const diasTxt = e.diasRestantes <= 0 ? 'Agotado' : isFinite(e.diasRestantes) ? `${Math.round(e.diasRestantes)} días` : '∞';
     const fechaTxt = e.diasRestantes > 0 && isFinite(e.diasRestantes) && e.fechaAgotamiento
       ? `Se agota ~ ${e.fechaAgotamiento.getDate()} de ${MESES[e.fechaAgotamiento.getMonth()]}` : '';
+    const consumoTxt = e.patronUso
+      ? `Se usa: ${e.patronUso} · ~${e.unidad === 'porciones' ? e.cantidadPorUso.toFixed(1) + ' porciones' : formatearCantidadCompras(e.cantidadPorUso, e.unidad)} cada vez`
+      : `Consumo: ~${e.unidad === 'porciones' ? e.dailyAvg.toFixed(1) : e.dailyAvg.toFixed(0)} ${e.unidad}/día`;
     return `<div class="inv-stock-card">
       <div class="inv-stock-top">
         <div class="inv-stock-nombre">${e.producto}</div>
         <div class="inv-stock-dias ${nivel}">${diasTxt}</div>
       </div>
-      <div class="inv-stock-sub">Stock neto: ${e.unidad === 'porciones' ? e.stockActual.toFixed(1) : Math.round(e.stockActual)} ${e.unidad} · Consumo: ~${e.unidad === 'porciones' ? e.dailyAvg.toFixed(1) : e.dailyAvg.toFixed(0)} ${e.unidad}/día${fechaTxt ? ' · ' + fechaTxt : ''}</div>
+      <div class="inv-stock-sub">Stock neto: ${e.unidad === 'porciones' ? e.stockActual.toFixed(1) : Math.round(e.stockActual)} ${e.unidad} · ${consumoTxt}${fechaTxt ? ' · ' + fechaTxt : ''}</div>
       <div class="inv-stock-bar-track"><div class="inv-stock-bar-fill ${nivel}" style="width:${pct}%"></div></div>
       ${construirAjusteFormHTML(e.producto)}
     </div>`;
