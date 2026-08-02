@@ -548,6 +548,21 @@
       background: var(--verde-light); border-radius: 10px;
       font-size: 12px; font-weight: 700; color: var(--verde-deep);
     }
+    .compras-item-precios { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+    .precio-tag {
+      font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: var(--radius-pill);
+      white-space: nowrap; cursor: default;
+    }
+    .precio-ref { background: var(--verde-light); color: var(--verde-deep); cursor: pointer; }
+    .precio-ultimo { background: #eef1f6; color: var(--text-mid); }
+    .precio-vacio { opacity: 0.65; font-weight: 600; }
+    .compras-item-subtotal { font-size: 11px; font-weight: 700; color: var(--text-mid); margin-top: 4px; }
+    .compras-dias-total {
+      margin: 14px 16px 0; padding: 12px 14px;
+      background: var(--verde-deep); color: white; border-radius: 10px;
+      font-size: 14px; font-weight: 700;
+    }
+    .compras-dias-total-nota { font-size: 10.5px; font-weight: 500; opacity: 0.85; margin-top: 4px; }
 
     /* ── CONFIG BUTTON (header) ── */
     .config-btn {
@@ -612,6 +627,21 @@
       color: var(--verde-deep); font-family: var(--font-body);
     }
     .config-input:focus { outline: none; border-color: var(--verde-soft); }
+
+    .precio-ref-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 9px 0; border-bottom: 1px solid var(--verde-pale); gap: 10px;
+    }
+    .precio-ref-categoria-titulo {
+      font-size: 11.5px; font-weight: 700; color: var(--verde-deep);
+      margin: 12px 0 2px;
+    }
+    .precio-ref-categoria-titulo:first-child { margin-top: 0; }
+    .precio-ref-info { flex: 1; min-width: 0; }
+    .precio-ref-nombre { font-size: 13px; color: var(--text-dark); font-weight: 500; }
+    .precio-ref-hint { font-size: 10.5px; color: var(--text-light); margin-top: 2px; }
+    .precio-ref-inputwrap { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+    .precio-ref-inputwrap span { font-size: 11px; color: var(--text-light); }
 
     .config-day-group {
       background: var(--verde-pale);
@@ -902,6 +932,7 @@
     .inv-precio-fila { display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; color: var(--text-mid); padding: 3px 0; }
     .inv-precio-fila.mejor { color: var(--verde-deep); font-weight: 700; }
     .inv-precio-tag { font-size: 9px; font-weight: 700; background: var(--verde-light); color: var(--verde-deep); padding: 1px 7px; border-radius: var(--radius-pill); margin-left: 6px; }
+    .inv-precio-porcion { font-size: 9.5px; font-weight: 500; opacity: 0.75; display: block; text-align: right; }
 
     /* ── INVENTARIO: HISTORIAL ── */
     .inv-historial-item {
@@ -1194,8 +1225,18 @@
         <button class="compras-dias-preset" onclick="calcularComprasPorDias(30)">30 días</button>
       </div>
       <div class="compras-dias-custom">
-        <input type="number" min="1" id="compras-dias-input" placeholder="Ej. 10" class="compras-dias-input">
+        <input type="number" min="1" id="compras-dias-input" placeholder="Ej. 10" class="compras-dias-input" style="flex:1.4;">
+        <select id="compras-dias-unidad" class="compras-dias-input" style="flex:1;">
+          <option value="1">días</option>
+          <option value="7">semanas</option>
+          <option value="30">meses</option>
+        </select>
         <button class="compras-dias-btn" onclick="calcularComprasPorDiasInput()">Calcular</button>
+      </div>
+      <div class="compras-dias-custom" style="margin-top:8px;">
+        <select id="compras-dias-producto" class="compras-dias-input" style="flex:1;" onchange="calcularComprasPorDiasInput()">
+          <option value="">Todos los productos</option>
+        </select>
       </div>
     </div>
     <div id="compras-container"></div>
@@ -1409,6 +1450,23 @@
 
       <div class="config-section-title">🍎 Frutas — unidad: porción / unidad entera</div>
       <div id="tabla-frutas"></div>
+
+      <div class="config-section-title">💲 Precios de referencia (para Compras)</div>
+      <div style="font-size:10.5px;color:var(--text-light);padding:0 0 8px;line-height:1.4;">
+        Precio base en USD por kg — para todos los productos, incluidas las proteínas
+        (se convierte solo a porciones con el estándar de abajo ⬇️). Se usa en Compras →
+        "Por días" para calcular el costo estimado de lo que hay que comprar. Se guarda
+        al momento, no hace falta tocar "Guardar ajustes".
+      </div>
+      <div id="tabla-precios-ref"></div>
+
+      <div class="config-section-title">🍗 Gramos por porción (proteínas)</div>
+      <div style="font-size:10.5px;color:var(--text-light);padding:0 0 8px;line-height:1.4;">
+        Estándar usado para SUGERIR automáticamente cuántas porciones salen de una compra
+        (kg neto ya sin merma ÷ gramos por porción). Al registrar la compra puedes
+        corregirlo si el rendimiento real fue distinto.
+      </div>
+      <div id="tabla-gramos-porcion"></div>
 
       <div class="config-section-title">📅 Excepciones puntuales (un solo día)</div>
       <div id="excepciones-lista"></div>
@@ -2423,6 +2481,7 @@ function cambiarVistaCompras(vista, btn) {
   if (vista === 'dias') {
     calc.style.display = 'block';
     if (limpiarBtn) limpiarBtn.style.display = 'none';
+    poblarSelectProductoCompras();
     container.innerHTML = '<div class="excepcion-empty" style="padding:16px;text-align:center;color:var(--text-light);font-size:12px;">Elige un preset o escribe un número de días arriba ↑</div>';
   } else {
     calc.style.display = 'none';
@@ -2438,16 +2497,33 @@ function cambiarVistaCompras(vista, btn) {
 // para decidir CUÁNTO COMPRAR de cara al futuro un promedio es lo que corresponde (no se
 // puede saber "qué día exacto" cae dentro de N días desde hoy en todos los casos), a
 // diferencia del cálculo de stock restante, que si necesita el patrón real día a día.
+// Llena el selector "producto individual" con el catálogo de Inventario — permite
+// pedir, ej. "Ocumo para 8 meses" en vez de la lista completa de todos los productos.
+function poblarSelectProductoCompras() {
+  const sel = document.getElementById('compras-dias-producto');
+  if (!sel) return;
+  const seleccionActual = sel.value;
+  const catalogo = getCatalogoInventario().slice().sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  sel.innerHTML = '<option value="">Todos los productos</option>' +
+    catalogo.map(p => `<option value="${p.nombre.replace(/"/g, '&quot;')}">${p.nombre}</option>`).join('');
+  if (seleccionActual && catalogo.some(p => p.nombre === seleccionActual)) sel.value = seleccionActual;
+}
+
 function calcularComprasPorDias(dias) {
   const input = document.getElementById('compras-dias-input');
+  const unidadSel = document.getElementById('compras-dias-unidad');
   if (input) input.value = dias;
-  renderCalculadoraComprasPorDias(dias);
+  if (unidadSel) unidadSel.value = '1'; // los presets siempre son en días
+  const prodSel = document.getElementById('compras-dias-producto');
+  renderCalculadoraComprasPorDias(dias, prodSel ? prodSel.value : '');
 }
 
 function calcularComprasPorDiasInput() {
-  const dias = parseInt(document.getElementById('compras-dias-input').value, 10);
-  if (!dias || dias <= 0) { alert('Ingresa un número de días válido.'); return; }
-  renderCalculadoraComprasPorDias(dias);
+  const cantidad = parseInt(document.getElementById('compras-dias-input').value, 10);
+  const multiplicador = parseInt(document.getElementById('compras-dias-unidad').value, 10) || 1;
+  if (!cantidad || cantidad <= 0) { alert('Ingresa un número válido.'); return; }
+  const producto = document.getElementById('compras-dias-producto').value;
+  renderCalculadoraComprasPorDias(cantidad * multiplicador, producto);
 }
 
 // Convierte una lista de días (ej. ['lunes','viernes']) en "Lunes y Viernes" — en
@@ -2470,12 +2546,16 @@ function formatearCantidadCompras(valor, unidad) {
   return Math.round(valor) + ' ' + unidad;
 }
 
-function renderCalculadoraComprasPorDias(dias) {
+function renderCalculadoraComprasPorDias(dias, productoFiltro) {
+  window._comprasDiasActual = dias; // recordado para poder re-renderizar tras editar un precio
   const container = document.getElementById('compras-container');
-  const catalogo = getCatalogoInventario();
+  let catalogo = getCatalogoInventario();
+  if (productoFiltro) catalogo = catalogo.filter(p => p.nombre === productoFiltro);
   const porCategoria = {};
   catalogo.forEach(p => { (porCategoria[p.categoria] = porCategoria[p.categoria] || []).push(p); });
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  let totalUSD = 0;
+  let algunSinPrecio = false;
 
   // Suma el consumo REAL de los próximos `dias` días a partir de hoy (día por día,
   // según el patrón exacto del PLAN) — NO un promedio plano. Un promedio (ej.
@@ -2513,14 +2593,51 @@ function renderCalculadoraComprasPorDias(dias) {
         unidad = p.consumoSemanal.unidad;
       }
       if (!cantidadNecesaria || cantidadNecesaria <= 0) return; // no toca en estos días, no hace falta comprar
+
+      const esProteina = p.categoria === 'proteina';
+      const unidadBase = getUnidadBasePrecio(p);
+      const cantidadBase = convertirABaseDeCosteo(cantidadNecesaria, unidad, esProteina, p.nombre);
+      const precioRef = getPrecioReferencia(p.nombre);
+      const ultimo = getUltimoPagado(p.nombre);
+      const precioAUsar = precioRef !== null ? precioRef : (ultimo ? ultimo.precioUnit : null);
+
+      let subtotalHtml = '';
+      if (cantidadBase !== null && precioAUsar !== null) {
+        const subtotal = cantidadBase * precioAUsar;
+        totalUSD += subtotal;
+        subtotalHtml = `<div class="compras-item-subtotal">${formatoDual(subtotal)}</div>`;
+      } else {
+        algunSinPrecio = true;
+      }
+
+      const refHtml = precioRef !== null
+        ? `<span class="precio-tag precio-ref" onclick="editarPrecioReferencia('${p.nombre.replace(/'/g, "\\'")}')">🏷️ Ref: $${precioRef.toFixed(2)}/${unidadBase}</span>`
+        : `<span class="precio-tag precio-ref precio-vacio" onclick="editarPrecioReferencia('${p.nombre.replace(/'/g, "\\'")}')">🏷️ + Agregar precio ref.</span>`;
+      const ultimoHtml = ultimo
+        ? `<span class="precio-tag precio-ultimo">🧾 Últ.: $${ultimo.precioUnit.toFixed(2)}/${unidadBase}${ultimo.lugar ? ' · ' + ultimo.lugar : ''}</span>`
+        : `<span class="precio-tag precio-ultimo precio-vacio">🧾 Sin compras registradas</span>`;
+
       bloqueHtml += `<div class="compras-item" style="cursor:default;">
-        <div class="compras-item-info"><div class="compras-item-nombre">${p.nombre}</div></div>
-        <div class="compras-item-cantidad">${formatearCantidadCompras(cantidadNecesaria, unidad)}</div>
+        <div class="compras-item-info">
+          <div class="compras-item-nombre">${p.nombre}</div>
+          <div class="compras-item-precios">${refHtml}${ultimoHtml}</div>
+        </div>
+        <div style="text-align:right;">
+          <div class="compras-item-cantidad">${formatearCantidadCompras(cantidadNecesaria, unidad)}</div>
+          ${subtotalHtml}
+        </div>
       </div>`;
     });
     if (!bloqueHtml) return; // categoría sin nada que comprar en este rango de días
     html += `<div class="compras-categoria"><div class="compras-cat-titulo">${INV_CATEGORIA_LABEL[cat]}</div>${bloqueHtml}</div>`;
   });
+
+  if (catalogo.length > 0) {
+    html += `<div class="compras-dias-total">
+      💰 Total estimado: ${formatoDual(totalUSD)}
+      ${algunSinPrecio ? '<div class="compras-dias-total-nota">Algunos productos no suman al total: falta precio de referencia y no tienen compras registradas.</div>' : ''}
+    </div>`;
+  }
   container.innerHTML = html;
 }
 
@@ -2711,6 +2828,8 @@ function abrirConfig() {
   renderMatriz('tabla-proteinas', PROTEINAS_CATALOGO, 'proteinas', ['desayuno','almuerzo','cena']);
   renderMatriz('tabla-vegetales', VEGETALES_CATALOGO, 'vegetales', ['desayuno','almuerzo','cena']);
   renderMatriz('tabla-frutas', FRUTAS_CATALOGO, 'frutas', ['merienda_am','merienda_pm']);
+  renderTablaPreciosReferencia();
+  renderTablaGramosPorcion();
   renderListaExcepciones();
 
   document.getElementById('config-overlay').classList.add('open');
@@ -2931,6 +3050,90 @@ function renderMatriz(containerId, catalogo, grupo, columnas) {
     💡 El número gris es el valor original del plan. Escribe encima para sobrescribirlo. Unidad: gramos (g), salvo huevo (unidades) y frutas (porción/unidad).
   </div>`;
   document.getElementById(containerId).innerHTML = html;
+}
+
+// Lista general en ⚙️ Ajustes para cargar/editar el precio de referencia de TODOS los
+// productos en un solo lugar (en vez de tener que ir producto por producto en Compras).
+// Guarda directo al cambiar el input — no depende del botón "Guardar ajustes" para no
+// arriesgar perder el precio si el usuario sale del modal sin darle a guardar.
+function renderTablaPreciosReferencia() {
+  const cont = document.getElementById('tabla-precios-ref');
+  if (!cont) return;
+  const catalogo = getCatalogoInventario().slice().sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  const porCategoria = {};
+  catalogo.forEach(p => { (porCategoria[p.categoria] = porCategoria[p.categoria] || []).push(p); });
+
+  let html = '';
+  INV_CATEGORIA_KEYS.forEach(cat => {
+    if (!porCategoria[cat] || porCategoria[cat].length === 0) return;
+    html += `<div class="precio-ref-categoria-titulo">${INV_CATEGORIA_LABEL[cat]}</div>`;
+    porCategoria[cat].forEach(p => {
+      const esProteina = p.categoria === 'proteina';
+      const unidadBase = getUnidadBasePrecio(p);
+      const precioActual = getPrecioReferencia(p.nombre);
+      const ultimo = getUltimoPagado(p.nombre);
+      const hint = ultimo
+        ? `Último pagado: $${ultimo.precioUnit.toFixed(2)}/${unidadBase}${ultimo.lugar ? ' · ' + ultimo.lugar : ''}`
+        : 'Sin compras registradas todavía';
+      // Para proteínas, mostramos también a cuánto equivale por porción con el precio
+      // de referencia cargado, usando el estándar de gramos-por-porción de Ajustes —
+      // así se ve de un vistazo lo que realmente entra en el cálculo de Compras.
+      const equivalenciaPorcion = esProteina && precioActual !== null
+        ? `<div class="precio-ref-hint">≈ $${(precioActual * getGramosPorPorcion(p.nombre) / 1000).toFixed(2)}/porción (con ${getGramosPorPorcion(p.nombre)}g c/u)</div>`
+        : '';
+      html += `<div class="precio-ref-row">
+        <div class="precio-ref-info">
+          <div class="precio-ref-nombre">${p.nombre}</div>
+          <div class="precio-ref-hint">${hint}</div>
+          ${equivalenciaPorcion}
+        </div>
+        <div class="precio-ref-inputwrap">
+          <span>$</span>
+          <input type="number" step="0.01" min="0" class="config-input" style="width:72px;"
+            value="${precioActual !== null ? precioActual : ''}" placeholder="0.00"
+            onchange="actualizarPrecioRefDesdeAjustes('${p.nombre.replace(/'/g, "\\'")}', this.value)">
+          <span>/${unidadBase}</span>
+        </div>
+      </div>`;
+    });
+  });
+  cont.innerHTML = html || '<div style="font-size:12px;color:var(--text-light);padding:8px 0;">Sin productos en el catálogo todavía.</div>';
+}
+
+function actualizarPrecioRefDesdeAjustes(nombre, valor) {
+  if (valor === '' || valor === null) { setPrecioReferencia(nombre, null); return; }
+  const num = parseFloat(valor);
+  if (isNaN(num) || num < 0) { alert('Ingresa un número válido.'); renderTablaPreciosReferencia(); return; }
+  setPrecioReferencia(nombre, num);
+}
+
+// Lista en ⚙️ Ajustes para editar, por proteína, cuántos gramos (neto) equivalen a UNA
+// porción — el estándar que usa la sugerencia automática al registrar una compra.
+function renderTablaGramosPorcion() {
+  const cont = document.getElementById('tabla-gramos-porcion');
+  if (!cont) return;
+  const proteinas = getCatalogoInventario()
+    .filter(p => p.categoria === 'proteina')
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+
+  cont.innerHTML = proteinas.map(p => `
+    <div class="precio-ref-row">
+      <div class="precio-ref-info">
+        <div class="precio-ref-nombre">${p.nombre}</div>
+      </div>
+      <div class="precio-ref-inputwrap">
+        <input type="number" step="1" min="1" class="config-input" style="width:64px;"
+          value="${getGramosPorPorcion(p.nombre)}"
+          onchange="actualizarGramosPorcionDesdeAjustes('${p.nombre.replace(/'/g, "\\'")}', this.value)">
+        <span>g/porción</span>
+      </div>
+    </div>`).join('') || '<div style="font-size:12px;color:var(--text-light);padding:8px 0;">Sin proteínas en el catálogo todavía.</div>';
+}
+
+function actualizarGramosPorcionDesdeAjustes(nombre, valor) {
+  const num = parseInt(valor, 10);
+  if (isNaN(num) || num <= 0) { alert('Ingresa un número de gramos válido.'); renderTablaGramosPorcion(); return; }
+  setGramosPorPorcion(nombre, num);
 }
 
 function guardarConfig() {
@@ -3271,11 +3474,109 @@ function construirEntradaCatalogo(nombre, categoria, cantidadTexto) {
   return { nombre, categoria, consumoSemanal, keysGrupo };
 }
 
+// ── GRAMOS POR PORCIÓN (proteínas) ──
+// Estándar usado para SUGERIR automáticamente cuántas porciones salen de una compra de
+// proteína (kg NETO, ya con la merma descontada, ÷ gramos por porción) — en vez de que
+// el usuario calcule a mano cada vez. Editable por producto en ⚙️ Ajustes. Sigue siendo
+// editable manualmente en el momento de registrar la compra por si el rendimiento real
+// salió distinto (algo pasa a veces con el pollo/pescado real vs. el estándar).
+const GRAMOS_POR_PORCION_DEFAULT = 120;
+function getGramosPorPorcionMap() {
+  return JSON.parse(localStorage.getItem('gramos_por_porcion') || '{}');
+}
+function setGramosPorPorcion(nombre, gramos) {
+  const map = getGramosPorPorcionMap();
+  const key = nombre.toLowerCase();
+  if (gramos === null) delete map[key];
+  else map[key] = gramos;
+  localStorage.setItem('gramos_por_porcion', JSON.stringify(map));
+}
+function getGramosPorPorcion(nombre) {
+  const v = getGramosPorPorcionMap()[nombre.toLowerCase()];
+  return (typeof v === 'number' && v > 0) ? v : GRAMOS_POR_PORCION_DEFAULT;
+}
+// Sugerencia de porciones a partir del neto (ya con merma descontada) de una compra.
+function sugerirPorciones(nombre, netaG) {
+  if (!netaG || netaG <= 0) return null;
+  return Math.round(netaG / getGramosPorPorcion(nombre));
+}
+
 function getComprasInventario() {
   return JSON.parse(localStorage.getItem('inventario_compras') || '[]');
 }
 function saveComprasInventario(arr) {
   localStorage.setItem('inventario_compras', JSON.stringify(arr));
+}
+
+// ── PRECIOS DE REFERENCIA (manual) + ÚLTIMO PRECIO PAGADO (derivado de compras) ──
+// El precio de referencia se guarda SIEMPRE en USD **por kg**, para TODOS los
+// productos (incluidas las proteínas) — es como la gente compra en el mercado ("el
+// kilo de pollo a $X"). La conversión a porciones (que es la unidad en que Inventario
+// mide el stock de proteínas) se hace sola usando el estándar de "gramos por porción"
+// configurado en Ajustes — ver convertirABaseDeCosteo() más abajo.
+function getPreciosReferencia() {
+  return JSON.parse(localStorage.getItem('precios_referencia') || '{}');
+}
+function setPrecioReferencia(nombre, valorUSD) {
+  const precios = getPreciosReferencia();
+  const key = nombre.toLowerCase();
+  if (valorUSD === null) delete precios[key];
+  else precios[key] = valorUSD;
+  localStorage.setItem('precios_referencia', JSON.stringify(precios));
+}
+function getPrecioReferencia(nombre) {
+  const v = getPreciosReferencia()[nombre.toLowerCase()];
+  return (typeof v === 'number' && v > 0) ? v : null;
+}
+
+// Unidad en la que se maneja el precio de referencia y el último pagado: siempre kg,
+// para todos los productos (incluidas proteínas) — así se carga como se compra.
+function getUnidadBasePrecio(p) {
+  return 'kg';
+}
+
+// Convierte la cantidad necesaria (en la unidad del catálogo: g/ml/unidades/porciones)
+// a KILOS, que es la unidad en la que ahora vive el precio de referencia/último pagado
+// para todos los productos. Para proteínas usa el estándar de gramos-por-porción
+// configurado en Ajustes (ver getGramosPorPorcion). Devuelve null si no hay una
+// equivalencia de peso conocida (ej. frutas contadas por unidad en vez de por kg).
+function convertirABaseDeCosteo(cantidad, unidadCatalogo, esProteina, nombre) {
+  if (esProteina) return cantidad * getGramosPorPorcion(nombre) / 1000; // porciones → kg
+  if (unidadCatalogo === 'g' || unidadCatalogo === 'ml') return cantidad / 1000;
+  return null;
+}
+
+// Precio ($/kg) de la ÚLTIMA compra registrada de este producto en Inventario — sobre
+// el kg BRUTO comprado (mismo criterio que ya usaba "🏷️ Mejor precio por lugar"), para
+// que sea comparable con el precio de referencia también en $/kg. null si nunca se ha
+// comprado.
+function getUltimoPagado(nombre) {
+  const compras = getComprasInventario()
+    .filter(c => c.producto && c.producto.toLowerCase() === nombre.toLowerCase())
+    .sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+  if (compras.length === 0) return null;
+  const c = compras[0];
+  if (!(c.cantidadKg > 0)) return null;
+  const precioUnit = c.costoUSD / c.cantidadKg;
+  if (!isFinite(precioUnit) || precioUnit <= 0) return null;
+  return { precioUnit, fecha: c.fecha, lugar: c.lugar };
+}
+
+// Abre un prompt para cargar/editar el precio de referencia manual de un producto (en
+// $/kg) y vuelve a calcular la lista con el mismo rango de días que estaba mostrando.
+function editarPrecioReferencia(nombre) {
+  const actual = getPrecioReferencia(nombre);
+  const texto = prompt(`Precio de referencia para "${nombre}" (USD por kg):`, actual !== null ? actual.toFixed(2) : '');
+  if (texto === null) return; // canceló
+  if (texto.trim() === '') { setPrecioReferencia(nombre, null); }
+  else {
+    const valor = parseFloat(texto.replace(',', '.'));
+    if (isNaN(valor) || valor < 0) { alert('Ingresa un número válido.'); return; }
+    setPrecioReferencia(nombre, valor);
+  }
+  const dias = window._comprasDiasActual || 7;
+  const producto = document.getElementById('compras-dias-producto') ? document.getElementById('compras-dias-producto').value : '';
+  renderCalculadoraComprasPorDias(dias, producto);
 }
 
 // ── TASA BCV ──
@@ -3362,7 +3663,7 @@ function toggleFormCompra() {
   if (form.classList.contains('open')) {
     document.getElementById('inv-fecha').value = new Date().toISOString().slice(0, 10);
     poblarLugaresInv();
-    window._loteInv = [{ producto: '', cantidadKg: '', mermaG: '', precioKg: '', porciones: '' }];
+    window._loteInv = [{ producto: '', cantidadKg: '', mermaG: '', precioKg: '', porciones: '', porcionesManual: false }];
     renderFilasInv();
     if (!window._tasaBCV) actualizarTasaBCV(true);
   }
@@ -3375,7 +3676,7 @@ function poblarLugaresInv() {
 }
 
 function agregarFilaInv() {
-  window._loteInv.push({ producto: '', cantidadKg: '', mermaG: '', precioKg: '', porciones: '' });
+  window._loteInv.push({ producto: '', cantidadKg: '', mermaG: '', precioKg: '', porciones: '', porcionesManual: false });
   renderFilasInv();
 }
 function quitarFilaInv(i) {
@@ -3384,11 +3685,15 @@ function quitarFilaInv(i) {
 }
 function actualizarFilaInv(i, campo, valor) {
   window._loteInv[i][campo] = valor;
+  // Si el usuario escribe directamente en "porciones", dejamos de auto-sugerir para esa
+  // fila (respetamos lo que puso a mano) hasta que pida explícitamente "usar sugerido".
+  if (campo === 'porciones') window._loteInv[i].porcionesManual = true;
   // Al cambiar el producto hay que volver a dibujar la fila completa: el recuadro de
   // "¿Cuántas porciones sacaste?" solo se decide dentro de renderFilasInv() según la
   // categoría del producto elegido (esProteina). Antes solo se parchaba el <select> en
   // el DOM sin re-renderizar, así que ese recuadro nunca llegaba a aparecer.
   if (campo === 'producto') {
+    window._loteInv[i].porcionesManual = false; // producto nuevo: vuelve a sugerir automático
     renderFilasInv();
   }
 }
@@ -3466,10 +3771,10 @@ function renderFilasInv() {
         <label style="font-size:9.5px;font-weight:700;color:var(--verde-mid);text-transform:uppercase;display:block;margin-bottom:3px;">
           🍗 ¿Cuántas porciones sacaste de esto?
         </label>
-        <input type="number" step="1" min="0" placeholder="Ej. 8" value="${fila.porciones || ''}"
+        <input type="number" step="1" min="0" placeholder="Ej. 8" id="inv-porciones-${i}" value="${fila.porciones || ''}"
           style="width:100%;border:1.5px solid var(--verde-soft);border-radius:7px;padding:6px 7px;font-size:12px;font-family:var(--font-body);color:var(--text-dark);"
           oninput="actualizarFilaInv(${i},'porciones',this.value)">
-        <div style="font-size:10px;color:var(--text-light);margin-top:3px;">El stock de proteínas se mide en porciones, no en gramos — tú decides cuánto rinde cada compra.</div>
+        <div style="font-size:10px;color:var(--text-light);margin-top:3px;" id="inv-porciones-hint-${i}">${porcionesHintHtml(i)}</div>
       </div>` : ''}
       <div class="inv-fila-resumen" id="inv-resumen-${i}">
         ${calc.costoTotal > 0 ? `
@@ -3505,6 +3810,43 @@ function recalcularFilaInv(i) {
     <span>💵 Total: <strong>${costoTotalFmt}</strong></span>
     <span>📊 Costo neto: ${costoNetoFmt}</span>`
     : '<span style="color:var(--text-light);font-size:11px;">Completa los campos para ver el cálculo</span>';
+
+  // Si es proteína y el usuario no escribió las porciones a mano, sugerimos automático
+  // a partir del kg NETO (ya con merma descontada) ÷ gramos-por-porción configurados.
+  const fila = window._loteInv[i];
+  if (!fila) return;
+  const porcionesInput = document.getElementById(`inv-porciones-${i}`);
+  const hint = document.getElementById(`inv-porciones-hint-${i}`);
+  if (porcionesInput && hint) {
+    if (!fila.porcionesManual) {
+      const sugerido = sugerirPorciones(fila.producto, calc.netaG);
+      fila.porciones = sugerido !== null ? String(sugerido) : '';
+      porcionesInput.value = fila.porciones;
+    }
+    hint.innerHTML = porcionesHintHtml(i);
+  }
+}
+
+// Texto de ayuda bajo el input de porciones: muestra la sugerencia automática y, si el
+// usuario la sobreescribió a mano, un enlace para volver a aplicarla.
+function porcionesHintHtml(i) {
+  const fila = window._loteInv[i];
+  const calc = calcularFilaInv(i);
+  const sugerido = sugerirPorciones(fila.producto, calc.netaG);
+  if (sugerido === null) {
+    return 'El stock de proteínas se mide en porciones, no en gramos. Completa cantidad y merma para ver una sugerencia automática.';
+  }
+  const gxp = getGramosPorPorcion(fila.producto);
+  if (fila.porcionesManual) {
+    return `Sugerido automático (neto ÷ ${gxp}g): <strong>${sugerido}</strong> porciones · <span onclick="usarPorcionesSugeridas(${i})" style="text-decoration:underline;cursor:pointer;">usar sugerido</span>`;
+  }
+  return `Sugerido automático (neto ÷ ${gxp}g): <strong>${sugerido}</strong> porciones — aplicado. Escribe encima si el rendimiento real fue distinto.`;
+}
+
+// Vuelve a activar el modo automático para esta fila (descarta lo escrito a mano).
+function usarPorcionesSugeridas(i) {
+  window._loteInv[i].porcionesManual = false;
+  recalcularFilaInv(i);
 }
 
 async function guardarLoteInventario() {
@@ -3587,7 +3929,7 @@ async function guardarLoteInventario() {
 }
 
 let _compraEditandoId = null;
-let _compraEditState = { cantidadKg: '', mermaG: '', precio: '', lugar: '', porciones: '' };
+let _compraEditState = { cantidadKg: '', mermaG: '', precio: '', lugar: '', porciones: '', porcionesManual: true, producto: '' };
 
 function borrarCompraInventario(id) {
   const compra = getComprasInventario().find(c => c.id === id);
@@ -3610,7 +3952,9 @@ function editarCompra(id) {
     mermaG: String(c.mermaG || ''),
     precio: String(c.precioKg ?? ''),
     lugar: c.lugar || '',
-    porciones: String(c.porciones ?? '')
+    porciones: String(c.porciones ?? ''),
+    producto: c.producto || '',
+    porcionesManual: true // ya tiene un valor guardado real: no lo pisamos hasta que pidan "usar sugerido"
   };
   renderInvHistorial();
 }
@@ -3622,6 +3966,13 @@ function cancelarEdicionCompra() {
 
 function actualizarCompraEditCampo(campo, valor) {
   _compraEditState[campo] = valor;
+  if (campo === 'porciones') _compraEditState.porcionesManual = true;
+  actualizarCompraEditPreview();
+}
+
+// Vuelve a activar el modo automático de porciones en la edición de una compra.
+function usarPorcionesSugeridasEdit() {
+  _compraEditState.porcionesManual = false;
   actualizarCompraEditPreview();
 }
 
@@ -3636,6 +3987,25 @@ function actualizarCompraEditPreview() {
   el.innerHTML = kg > 0
     ? `Neto: <strong>${(netaG / 1000).toFixed(2)} kg</strong> · Costo: <strong>${costoTotal.toFixed(2)}</strong>`
     : 'Completa cantidad y precio para ver el nuevo cálculo';
+
+  // Sugerencia automática de porciones (misma lógica que al registrar una compra nueva)
+  const porcionesInput = document.getElementById('compra-edit-porciones');
+  const hint = document.getElementById('compra-edit-porciones-hint');
+  if (porcionesInput && hint) {
+    const sugerido = sugerirPorciones(_compraEditState.producto, netaG);
+    if (sugerido === null) {
+      hint.innerHTML = 'Completa cantidad y merma para ver una sugerencia automática.';
+    } else {
+      const gxp = getGramosPorPorcion(_compraEditState.producto);
+      if (!_compraEditState.porcionesManual) {
+        _compraEditState.porciones = String(sugerido);
+        porcionesInput.value = _compraEditState.porciones;
+        hint.innerHTML = `Sugerido automático (neto ÷ ${gxp}g): <strong>${sugerido}</strong> porciones — aplicado.`;
+      } else {
+        hint.innerHTML = `Sugerido automático (neto ÷ ${gxp}g): <strong>${sugerido}</strong> porciones · <span onclick="usarPorcionesSugeridasEdit()" style="text-decoration:underline;cursor:pointer;">usar sugerido</span>`;
+      }
+    }
+  }
 }
 
 // Recalcula la compra editada con la MISMA fórmula que "Registrar compras" (kg brutos +
@@ -4265,18 +4635,26 @@ function renderInvPrecios() {
     const lugares = [...new Set(items.map(c => c.lugar).filter(Boolean))];
     if (lugares.length < 2) return null;
 
+    const esProteina = items[0].categoria === 'proteina';
     const porLugar = lugares.map(lugar => {
-      const deEseLugar = items.filter(c => c.lugar === lugar);
-      // precio por unidad BRUTA comprada (no neta) — así comparas lo que realmente pagaste por unidad en el mercado
-      const precioUnit = deEseLugar.reduce((s, c) => s + c.costoUSD / (c.cantidadBruta || c.cantidadNeta || 1), 0) / deEseLugar.length;
+      const deEseLugar = items.filter(c => c.lugar === lugar && c.cantidadKg > 0);
+      // precio por KG BRUTO comprado (no neto) — así comparas lo que realmente pagaste
+      // por kilo en el mercado, sin que la merma o el rendimiento en porciones lo
+      // distorsionen. Misma unidad que el resto de la app (Ref./Últ. pagado en Compras).
+      const precioUnit = deEseLugar.length
+        ? deEseLugar.reduce((s, c) => s + c.costoUSD / c.cantidadKg, 0) / deEseLugar.length
+        : 0;
       return { lugar, precioUnit };
-    }).sort((a, b) => a.precioUnit - b.precioUnit);
+    }).filter(p => p.precioUnit > 0).sort((a, b) => a.precioUnit - b.precioUnit);
+    if (porLugar.length < 2) return null;
 
-    const unidad = items[0].unidad;
     const filas = porLugar.map((p, i) => `
       <div class="inv-precio-fila ${i === 0 ? 'mejor' : ''}">
         <span>${p.lugar}${i === 0 ? '<span class="inv-precio-tag">Más barato</span>' : ''}</span>
-        <span>${formatoDual(p.precioUnit)}/${unidad}</span>
+        <span>
+          ${formatoDual(p.precioUnit)}/kg
+          ${esProteina ? `<span class="inv-precio-porcion">≈ $${(p.precioUnit * getGramosPorPorcion(producto) / 1000).toFixed(2)}/porción</span>` : ''}
+        </span>
       </div>`).join('');
 
     return `<div class="inv-precio-card"><div class="inv-precio-nombre">${producto}</div>${filas}</div>`;
@@ -4316,6 +4694,7 @@ function renderInvHistorial() {
       ${editando ? construirEdicionCompraHTML(c) : ''}
     </div>`;
   }).join('');
+  if (_compraEditandoId) actualizarCompraEditPreview();
 }
 
 function construirEdicionCompraHTML(c) {
@@ -4339,9 +4718,10 @@ function construirEdicionCompraHTML(c) {
     ${esProteina ? `
     <div style="margin-bottom:8px;background:var(--verde-pale);border-radius:8px;padding:8px 10px;">
       <label style="font-size:9.5px;font-weight:700;color:var(--verde-mid);text-transform:uppercase;display:block;margin-bottom:3px;">🍗 Porciones sacadas de esto</label>
-      <input type="number" step="1" min="0" value="${_compraEditState.porciones}"
+      <input type="number" step="1" min="0" id="compra-edit-porciones" value="${_compraEditState.porciones}"
         style="width:100%;border:1.5px solid var(--verde-soft);border-radius:7px;padding:6px 7px;font-size:12px;font-family:var(--font-body);color:var(--text-dark);"
         oninput="actualizarCompraEditCampo('porciones', this.value)">
+      <div style="font-size:10px;color:var(--text-light);margin-top:3px;" id="compra-edit-porciones-hint"></div>
     </div>` : ''}
     <input type="text" class="excepcion-form-input" placeholder="Lugar de compra" style="margin-bottom:8px;" value="${_compraEditState.lugar}" oninput="actualizarCompraEditCampo('lugar', this.value)">
     <div class="ajuste-neto-preview" id="compra-edit-preview">Ajusta los valores para ver el nuevo cálculo</div>
@@ -4580,7 +4960,7 @@ const FIREBASE_CONFIG = {
 };
 
 // Claves de localStorage que se respaldan en la nube (más las que empiecen con "cocinar_")
-const SYNC_KEYS_FIJAS = ['plan_overrides', 'plan_excepciones', 'recetas_historial', 'compras_state', 'inventario_compras', 'productos_personalizados', 'inventario_ajustes'];
+const SYNC_KEYS_FIJAS = ['plan_overrides', 'plan_excepciones', 'recetas_historial', 'compras_state', 'inventario_compras', 'productos_personalizados', 'inventario_ajustes', 'precios_referencia', 'gramos_por_porcion'];
 
 let _firebaseListo = false;
 let _syncDb = null;
